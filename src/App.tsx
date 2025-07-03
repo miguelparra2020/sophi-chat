@@ -1,7 +1,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
-import { Send, Settings, User, Bot, Mic, X, Power } from "lucide-react"
+import { Send, Settings, User, Bot, Mic, X, Power, Lock, AtSign } from "lucide-react"
 import { Button } from "./components/ui/button"
 import { Input } from "./components/ui/input"
 import { Card } from "./components/ui/card"
@@ -24,29 +24,108 @@ export default function ChatInterface() {
   const [isRecording, setIsRecording] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
+  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+  const [authToken, setAuthToken] = useState<string | null>(null)
+  const [loginError, setLoginError] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   
-  // Función para iniciar el chat
-  const startChat = () => {
-    setIsConnected(true)
+  // Función para mostrar el modal de login
+  const openLoginModal = () => {
     setShowSettingsModal(false)
-    const initialMessages: Message[] = [
-      {
-        id: "1",
-        content: "Token obtenido exitosamente",
-        sender: "bot",
-        timestamp: new Date(),
-        type: "system",
-      },
-      {
-        id: "2",
-        content: "¡Hola! Soy Sophi, tu asistente de chat. ¿En qué puedo ayudarte hoy?",
-        sender: "bot",
-        timestamp: new Date(),
-      },
-    ]
-    setMessages(initialMessages)
+    setShowLoginModal(true)
+    setLoginError(null)
+  }
+
+  // Función para autenticar y luego iniciar el chat
+  const handleLogin = async () => {
+    try {
+      setLoginError(null)
+      
+      if (!username || !password) {
+        setLoginError('Por favor ingresa usuario y contraseña')
+        return
+      }
+      
+      // Mostrar mensaje de conexión en progreso
+      setShowLoginModal(false)
+      setMessages([
+        {
+          id: Date.now().toString(),
+          content: "Autenticando...",
+          sender: "bot",
+          timestamp: new Date(),
+          type: "system",
+        }
+      ])
+      
+      // Configurar credenciales
+      const credentials = {
+        username,
+        password
+      };
+      
+      // Realizar petición para obtener token
+      const response = await fetch('https://sophi-auth.sistemaoperaciones.com/api/users/token/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(credentials)
+      });
+      
+      // Manejar errores HTTP
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+      
+      // Procesar la respuesta
+      const data = await response.json();
+      console.log("data", data)
+      
+      // Verificar si se recibió un token válido
+      if (data && data.access) {
+        // Guardar el token y establecer conexión
+        setAuthToken(data.access)
+        setIsConnected(true)
+        
+        // Mostrar mensajes iniciales
+        setMessages([
+          {
+            id: Date.now().toString(),
+            content: "Autenticación exitosa. Token obtenido.",
+            sender: "bot",
+            timestamp: new Date(),
+            type: "system",
+          },
+          {
+            id: (Date.now() + 1).toString(),
+            content: "¡Hola! Soy Sophi, tu asistente de chat. ¿En qué puedo ayudarte hoy?",
+            sender: "bot",
+            timestamp: new Date(),
+          }
+        ])
+      } else {
+        throw new Error('No se recibió un token válido');
+      }
+    } catch (error) {
+      console.error('Error al obtener token:', error);
+      // Mostrar mensaje de error
+      setIsConnected(false)
+      setLoginError(error instanceof Error ? error.message : 'Error desconocido')
+      setShowLoginModal(true)
+      setMessages([
+        {
+          id: Date.now().toString(),
+          content: `Error de autenticación: ${error instanceof Error ? error.message : 'Error desconocido'}`,
+          sender: "bot",
+          timestamp: new Date(),
+          type: "system",
+        }
+      ])
+    }
   }
   
   // Función para cerrar el chat
@@ -54,6 +133,7 @@ export default function ChatInterface() {
     setIsConnected(false)
     setMessages([])
     setShowSettingsModal(false)
+    setAuthToken(null)
   }
 
   const scrollToBottom = () => {
@@ -108,10 +188,72 @@ export default function ChatInterface() {
   }
 
   return (
-    
     <div className="flex justify-center items-center w-[100%]">
-        <div className="flex flex-col w-full  h-screen bg-gradient-to-br from-slate-50 to-slate-100 ">
-          <div className="bg-white  border-b border-slate-200  px-6 py-4 shadow-sm">
+        {/* Modal de Login */}
+        {showLoginModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-20">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-semibold">Iniciar Sesión</h2>
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => setShowLoginModal(false)}
+                  className="h-8 w-8"
+                >
+                  <X className="h-5 w-5" />
+                </Button>
+              </div>
+              
+              {loginError && (
+                <div className="bg-red-50 text-red-600 p-3 rounded-md mb-4">
+                  {loginError}
+                </div>
+              )}
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label htmlFor="username" className="text-sm font-medium">Usuario</label>
+                  <div className="relative">
+                    <AtSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input 
+                      id="username"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      className="pl-10"
+                      placeholder="Nombre de usuario"
+                    />
+                  </div>
+                </div>
+                
+                <div className="space-y-2">
+                  <label htmlFor="password" className="text-sm font-medium">Contraseña</label>
+                  <div className="relative">
+                    <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <Input 
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="pl-10"
+                      placeholder="Contraseña"
+                    />
+                  </div>
+                </div>
+                
+                <Button 
+                  onClick={handleLogin}
+                  className="w-full bg-blue-500 hover:bg-blue-600 text-white"
+                >
+                  Iniciar Sesión
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div className="flex flex-col w-full h-screen bg-gradient-to-br from-slate-50 to-slate-100 ">
+          <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
                 <Avatar className="h-10 w-10">
@@ -142,7 +284,7 @@ export default function ChatInterface() {
                       <Button 
                         variant="outline" 
                         className="flex justify-start items-center gap-2" 
-                        onClick={startChat}
+                        onClick={openLoginModal}
                         disabled={isConnected}
                       >
                         <Power className="h-4 w-4 text-green-500" />
