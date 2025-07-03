@@ -61,13 +61,10 @@ export default function ChatInterface() {
         }
       ])
       
-      // Configurar credenciales
       const credentials = {
         username,
         password
       };
-      
-      // Realizar petición para obtener token
       const response = await fetch('https://sophi-auth.sistemaoperaciones.com/api/users/token/', {
         method: 'POST',
         headers: {
@@ -76,18 +73,13 @@ export default function ChatInterface() {
         body: JSON.stringify(credentials)
       });
       
-      // Manejar errores HTTP
       if (!response.ok) {
         throw new Error(`Error HTTP: ${response.status}`);
       }
       
-      // Procesar la respuesta
       const data = await response.json();
       console.log("data", data)
-      
-      // Verificar si se recibió un token válido
       if (data && data.access) {
-        // Guardar el token y establecer conexión
         setAuthToken(data.access)
         setIsConnected(true)
         
@@ -188,11 +180,11 @@ export default function ChatInterface() {
   }
 
   return (
-    <div className="flex justify-center items-center w-[100%]">
+    <div className="w-screen h-screen overflow-hidden">
         {/* Modal de Login */}
         {showLoginModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-20">
-            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-semibold">Iniciar Sesión</h2>
                 <Button 
@@ -252,7 +244,7 @@ export default function ChatInterface() {
           </div>
         )}
         
-        <div className="flex flex-col w-full h-screen bg-gradient-to-br from-slate-50 to-slate-100 ">
+        <div className="flex flex-col w-screen h-screen bg-gradient-to-br from-slate-50 to-slate-100">
           <div className="bg-white border-b border-slate-200 px-6 py-4 shadow-sm">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
@@ -305,7 +297,7 @@ export default function ChatInterface() {
               </div>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 w-full">
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
                 <div
@@ -362,15 +354,17 @@ export default function ChatInterface() {
           </div>
 
           <Separator />
-          <div className="bg-white  border-t border-slate-200 dark:border-slate-700 px-4 py-4">
-            <div className="flex items-center space-x-3">
+          {
+            authToken ? 
+            <div className="bg-white border-t border-slate-200 dark:border-slate-700 px-4 py-4 w-full">
+            <div className="flex items-center space-x-3 w-full">
                 <Input
                   ref={inputRef}
                   value={inputMessage}
                   onChange={(e) => setInputMessage(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Escribe un mensaje..."
-                  className="pr-12 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="pr-12 bg-slate-50 dark:bg-slate-700 border-slate-200 dark:border-slate-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent flex-1"
                 />
               <Button
                 onClick={toggleRecording}
@@ -395,7 +389,9 @@ export default function ChatInterface() {
                 </div>
               </div>
             )}
-          </div>
+          </div> : null
+          }
+          
         </div>
     </div>
   )
