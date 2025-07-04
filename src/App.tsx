@@ -34,7 +34,7 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const socketRef = useRef<Socket | null>(null)
-  
+  console.log("socketStatus", socketStatus)
   // Función para mostrar el modal de login
   const openLoginModal = () => {
     setShowSettingsModal(false)
@@ -98,12 +98,6 @@ export default function ChatInterface() {
             sender: "bot",
             timestamp: new Date(),
             type: "system",
-          },
-          {
-            id: (Date.now() + 1).toString(),
-            content: "¡Hola! Soy Sophi, tu asistente de chat. ¿En qué puedo ayudarte hoy?",
-            sender: "bot",
-            timestamp: new Date(),
           }
         ])
       } else {
@@ -155,6 +149,14 @@ export default function ChatInterface() {
         console.log('¡Evento connect recibido!', socketRef.current?.id);
         setSocketStatus("conectado");
         addSystemMessage("Conexión WebSocket establecida");
+        setMessages([
+          {
+            id: (Date.now() + 1).toString(),
+            content: "¡Hola! Soy Sophi, tu asistente de chat. ¿En qué puedo ayudarte hoy?",
+            sender: "bot",
+            timestamp: new Date(),
+          }
+        ])
       });
       
       socketRef.current.on('disconnect', () => {
@@ -185,10 +187,16 @@ export default function ChatInterface() {
             // Añadir el mensaje al chat con audio si está disponible
             console.log('Datos recibidos:', parsedData);
             addBotMessage(parsedData.message);
+          } else if (parsedData.content) {
+            // Si tiene estructura {content: "mensaje"}
+            console.log('Mensaje con content:', parsedData);
+            addBotMessage(parsedData.content);
           } else {
-            // Compatibilidad con versiones anteriores
+            // Compatibilidad con versiones anteriores o texto simple
             console.log('Estructura antigua de mensaje:', parsedData);
-            addBotMessage(parsedData);
+            // Si es string, usar directamente, si no, convertir a string
+            const messageText = typeof parsedData === 'string' ? parsedData : JSON.stringify(parsedData);
+            addBotMessage(messageText);
           }
         } catch (error) {
           console.error('Error al procesar mensaje:', error);
@@ -226,8 +234,23 @@ export default function ChatInterface() {
   };
 
   // Helper para añadir mensajes del bot
-  const addBotMessage = (content: string | any) => {
-    const messageContent = typeof content === 'string' ? content : JSON.stringify(content);
+  const addBotMessage = (content: string) => {
+    // Si el contenido parece ser un objeto JSON serializado, intenta extraer el campo 'content'
+    let messageContent = content;
+    
+    try {
+      // Verifica si el contenido parece ser un JSON string
+      if (content.startsWith('{') && content.includes('content')) {
+        const parsedContent = JSON.parse(content);
+        if (parsedContent.content) {
+          messageContent = parsedContent.content;
+        }
+      }
+    } catch {
+      // Si hay error al intentar parsear, usamos el contenido original
+      console.log('No es un JSON válido, usando texto original');
+    }
+    
     setMessages(prevMessages => [...prevMessages, {
       id: Date.now().toString(),
       content: messageContent,
