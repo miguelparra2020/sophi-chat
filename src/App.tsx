@@ -15,7 +15,7 @@ interface Message {
   content: string
   sender: "user" | "bot"
   timestamp: Date
-  type?: "text" | "system" | "audio" | "image"
+  type?: "text" | "system" | "audio" | "image" | "transcription"
   audioUrl?: string // URL para reproducir el audio
   graphs?: string[] // URLs de imágenes/gráficos a mostrar
 }
@@ -218,6 +218,26 @@ export default function ChatInterface() {
           
           // Paso 1: Asegurarse de que tenemos un objeto (parsear si es string)
           const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+          
+          // Verificar si es un mensaje de transcripción completada
+          if (typeof parsedData === 'object' && 
+              parsedData !== null && 
+              parsedData.status === 'transcription_complete' && 
+              parsedData.text) {
+            
+            console.log('Mensaje de transcripción completada detectado:', parsedData);
+            
+            // Añadir como mensaje del usuario en lugar del bot
+            setMessages(prevMessages => [...prevMessages, {
+              id: Date.now().toString(),
+              content: parsedData.text,
+              sender: "user", // Importante: lo marcamos como mensaje del usuario
+              timestamp: new Date(),
+              type: "transcription" // Opcional: podemos añadir un tipo específico
+            }]);
+            
+            return; // Ya procesamos este mensaje, no continuar
+          }
           
           // Paso 2: Detectar SOLO mensajes puramente técnicos (con formato exacto de los que vimos en el error)
           // Solo filtramos objetos JSON con exactamente la estructura que causa problemas
@@ -744,7 +764,7 @@ export default function ChatInterface() {
   }
 
   return (
-    <div className="w-screen h-screen overflow-hidden">
+    <div className="w-screen h-[100dvh] overflow-hidden">
         {/* Modal de Login */}
         {showLoginModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-20">
@@ -819,10 +839,19 @@ export default function ChatInterface() {
                 <div>
                   <h1 className="text-xl font-semibold text-slate-900 dark:text-slate-100">Sophi Chat</h1>
                   <div className="flex items-center space-x-2">
-                    <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`} />
-                    <span className="text-sm text-slate-500 dark:text-slate-400">
-                      {isConnected ? "Conectado" : "Desconectado"}
-                    </span>
+                    {isWaitingResponse ? (
+                      <div className="flex items-center space-x-2 py-1 px-2 bg-blue-50 dark:bg-blue-900/20 rounded-full animate-pulse">
+                        <Loader2 className="h-3 w-3 animate-spin text-blue-500 dark:text-blue-400" />
+                        <span className="text-sm text-blue-600 dark:text-blue-400">Sophi está escribiendo...</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500" : "bg-red-500"}`} />
+                        <span className="text-sm text-slate-500 dark:text-slate-400">
+                          {isConnected ? "Conectado" : "Desconectado"}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
@@ -861,27 +890,8 @@ export default function ChatInterface() {
               </div>
             </div>
           </div>
+          {/* Eliminamos el indicador de espera flotante ya que ahora está en la barra de navegación */}
           <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 w-full">
-            {/* Indicador de espera (tres puntos de carga) */}
-            {isWaitingResponse && (
-              <div className="flex justify-start">
-                <div className="flex items-start space-x-3 max-w-[80%]">
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
-                      <Bot className="h-4 w-4" />
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col items-start">
-                    <Card className="p-4 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-600">
-                      <div className="flex items-center space-x-2">
-                        <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
-                        <p className="text-sm text-slate-500">Sophi está escribiendo...</p>
-                      </div>
-                    </Card>
-                  </div>
-                </div>
-              </div>
-            )}
             
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
