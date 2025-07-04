@@ -181,10 +181,46 @@ export default function ChatInterface() {
       socketRef.current.on('message', (data) => {
         try {
           console.log('Datos recibidos sin procesar:', data);
+          
+          // Filtro para mensajes técnicos de varios formatos
+          if (typeof data === 'string') {
+            try {
+              // Intentamos parsear para verificar la estructura
+              const testObj = JSON.parse(data);
+              
+              // Caso 2: Filtrar mensajes con status "received"
+              if (testObj.status === 'received' && testObj.messageType) {
+                // Estos son mensajes técnicos de confirmación de recepción
+                console.log('Mensaje de confirmación "received" filtrado:', data);
+                return; // No procesar este mensaje
+              }
+            } catch (e) {
+              // Si hay error al parsear, permitimos que el flujo continúe
+            }
+          }
+          
           // Paso 1: Asegurarse de que tenemos un objeto (parsear si es string)
           const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
           
-          // Paso 2: Extraer el contenido del mensaje según la estructura recibida
+          // Paso 2: Detectar SOLO mensajes puramente técnicos (con formato exacto de los que vimos en el error)
+          // Solo filtramos objetos JSON con exactamente la estructura que causa problemas
+          const isRawSocketMessage = 
+            typeof parsedData === 'object' && 
+            // Detectar exactamente el formato de los mensajes técnicos que queríamos filtrar
+            parsedData !== null &&
+            parsedData.socketId && 
+            parsedData.timestamp && 
+            !parsedData.text && // No tiene contenido de texto explícito
+            !parsedData.message && // No tiene un mensaje explícito
+            typeof parsedData.content !== 'string'; // No tiene contenido legible
+          
+          // Solo filtramos estos mensajes técnicos muy específicos
+          if (isRawSocketMessage) {
+            console.log('Mensaje técnico de socket filtrado:', parsedData);
+            return; // No mostrar este tipo de mensaje
+          }
+          
+          // Paso 3: Extraer el contenido del mensaje según la estructura recibida
           let messageContent = '';
           
           if (typeof parsedData === 'string') {
@@ -196,17 +232,30 @@ export default function ChatInterface() {
               messageContent = typeof parsedData.message === 'string' ? parsedData.message : JSON.stringify(parsedData.message);
             } else if (parsedData.content) {
               messageContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
+            } else if (parsedData.userMessage) {
+              // Mensaje específico para el usuario
+              messageContent = parsedData.userMessage;
+            } else if (parsedData.text) {
+              // Si tiene un campo text, usarlo directamente
+              messageContent = parsedData.text;
             } else {
-              // Si no tiene una propiedad clara, usar una representación de texto del objeto
-              messageContent = 'Mensaje recibido: ' + JSON.stringify(parsedData);
+              // Para cualquier otro tipo de mensaje, intentamos extraer información útil
+              // o simplemente lo convertimos a string como último recurso
+              messageContent = JSON.stringify(parsedData);
             }
           } else {
             // Fallback para cualquier otro tipo de datos
             messageContent = String(parsedData);
           }
           
-          console.log('Contenido extraído del mensaje:', messageContent);
-          // Paso 3: Añadir el mensaje procesado al chat
+          // Solo filtramos mensajes que son claramente mensajes técnicos
+          if (messageContent.startsWith('{"socketId":') && messageContent.includes('timestamp') && !messageContent.includes('text')) {
+            console.log('Mensaje JSON técnico filtrado:', messageContent);
+            return; // No mostrar el mensaje
+          }
+          
+          console.log('Contenido extraído del mensaje que se mostrará:', messageContent);
+          // Paso 4: Añadir el mensaje procesado al chat si pasó todos los filtros
           addBotMessage(messageContent);
         } catch (error) {
           console.error('Error al procesar mensaje:', error);
