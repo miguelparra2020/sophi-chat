@@ -192,7 +192,7 @@ export default function ChatInterface() {
               // Intentamos parsear para verificar la estructura
               const testObj = JSON.parse(data);
               
-              // Caso 2: Filtrar mensajes con status "received"
+              // Caso 1: Filtrar mensajes con status "received"
               if (testObj.status === 'received' && testObj.messageType) {
                 // Estos son mensajes técnicos de confirmación de recepción
                 console.log('Mensaje de confirmación "received" filtrado:', data);
@@ -200,6 +200,12 @@ export default function ChatInterface() {
               }
               // Caso 2: Filtrar mensajes con status "received"
               if (testObj.status === 'processing' && testObj.messageType) {
+                // Estos son mensajes técnicos de confirmación de recepción
+                console.log('Mensaje de confirmación "received" filtrado:', data);
+                return; // No procesar este mensaje
+              }
+              // Caso 2: Filtrar mensajes con status "received"
+              if (testObj.status === 'processing_audio' && testObj.messageType) {
                 // Estos son mensajes técnicos de confirmación de recepción
                 console.log('Mensaje de confirmación "received" filtrado:', data);
                 return; // No procesar este mensaje
@@ -228,6 +234,96 @@ export default function ChatInterface() {
           if (isRawSocketMessage) {
             console.log('Mensaje técnico de socket filtrado:', parsedData);
             return; // No mostrar este tipo de mensaje
+          }
+          
+          // Detectar si es un mensaje de audio con campo audioData
+          if (parsedData && typeof parsedData === 'object' && parsedData.audioData) {
+            console.log('Mensaje de audio detectado:', parsedData);
+            
+            try {
+              // Obtener el tipo MIME del audio (usando webm por defecto si no está disponible)
+              const mimeType = parsedData.metadata?.mimeType || 'audio/webm';
+              
+              // Crear un Blob a partir de los datos base64
+              const byteCharacters = atob(parsedData.audioData);
+              const byteNumbers = new Array(byteCharacters.length);
+              for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+              }
+              const byteArray = new Uint8Array(byteNumbers);
+              const audioBlob = new Blob([byteArray], { type: mimeType });
+              
+              // Crear URL para reproducir el audio
+              const audioURL = URL.createObjectURL(audioBlob);
+              
+              // Extraer el texto del mensaje si existe
+              let textContent = "Audio";
+              
+              // Intentar extraer el contenido de estructuras JSON anidadas
+              const tryParseJsonContent = (data: any) => {
+                if (!data) return null;
+                
+                // Si es un string que parece JSON, intentar parsearlo
+                if (typeof data === 'string' && (data.startsWith('{') || data.startsWith('['))) {
+                  try {
+                    const parsed = JSON.parse(data);
+                    if (parsed.content) return parsed.content;
+                    return null;
+                  } catch {
+                    return null;
+                  }
+                }
+                
+                // Si ya es un objeto, buscar el campo content
+                if (typeof data === 'object' && data !== null && data.content) {
+                  return data.content;
+                }
+                
+                return null;
+              };
+              
+              // Primero, buscar en el campo content directamente
+              if (parsedData.content) {
+                const extractedContent = tryParseJsonContent(parsedData.content);
+                if (extractedContent) {
+                  textContent = extractedContent;
+                } else {
+                  textContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
+                }
+              } 
+              // Luego en message
+              else if (parsedData.message) {
+                const extractedContent = tryParseJsonContent(parsedData.message);
+                if (extractedContent) {
+                  textContent = extractedContent;
+                } else {
+                  textContent = typeof parsedData.message === 'string' ? parsedData.message : JSON.stringify(parsedData.message);
+                }
+              } 
+              // Finalmente en text
+              else if (parsedData.text) {
+                textContent = parsedData.text;
+              }
+              
+              // Añadir mensaje de audio del bot con texto
+              setMessages(prevMessages => [...prevMessages, {
+                id: Date.now().toString(),
+                content: textContent, // Contenido de texto del mensaje
+                sender: "bot",
+                timestamp: new Date(),
+                type: "audio",
+                audioUrl: audioURL
+              }]);
+              
+              // Desactivar indicador de espera cuando se recibe una respuesta
+              setIsWaitingResponse(false);
+              
+              // Ya hemos procesado este mensaje, así que retornamos
+              return;
+            } catch (error) {
+              console.error('Error al procesar audio:', error);
+              // Si hay error, continuamos con el procesamiento normal
+            }
           }
           
           // Paso 3: Extraer el contenido del mensaje según la estructura recibida
@@ -720,19 +816,28 @@ export default function ChatInterface() {
                         </Badge>
                       )}
                       {message.type === "audio" ? (
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col gap-2">
                           <p
                             className={`text-sm ${
                               message.sender === "user" ? "text-white" : "text-slate-900 dark:text-slate-100"
                             }`}
                           >
-                            Mensaje de audio:
+                            {message.content}
                           </p>
-                          <audio 
-                            controls 
-                            src={message.audioUrl} 
-                            className="max-w-[200px] h-8"
-                          />
+                          <div className="flex flex-col gap-1">
+                            <p
+                              className={`text-xs ${
+                                message.sender === "user" ? "text-white" : "text-slate-700 dark:text-slate-300"
+                              }`}
+                            >
+                              Mensaje de audio:
+                            </p>
+                            <audio 
+                              controls 
+                              src={message.audioUrl} 
+                              className="max-w-[200px] h-8"
+                            />
+                          </div>
                         </div>
                       ) : (
                         <p
