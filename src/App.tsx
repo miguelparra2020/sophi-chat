@@ -2,7 +2,7 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { io, Socket } from "socket.io-client"
-import { Send, Settings, User, Bot, Mic, X, Power, Lock, AtSign, Loader2 } from "lucide-react"
+import { Send, Settings, User, Bot, Mic, X, Power, Lock, AtSign, Loader2, ExternalLink, Download } from "lucide-react"
 import { Button } from "./components/ui/button"
 import { Input } from "./components/ui/input"
 import { Card } from "./components/ui/card"
@@ -15,8 +15,9 @@ interface Message {
   content: string
   sender: "user" | "bot"
   timestamp: Date
-  type?: "text" | "system" | "audio"
+  type?: "text" | "system" | "audio" | "image"
   audioUrl?: string // URL para reproducir el audio
+  graphs?: string[] // URLs de imágenes/gráficos a mostrar
 }
 
 export default function ChatInterface() {
@@ -328,14 +329,57 @@ export default function ChatInterface() {
           
           // Paso 3: Extraer el contenido del mensaje según la estructura recibida
           let messageContent = '';
+          let graphUrls: string[] = [];
           
           if (typeof parsedData === 'string') {
-            // Si ya es una cadena de texto después de parsear
-            messageContent = parsedData;
+            // Verificar si es un mensaje con formato numérico al inicio (como "42["message",...")
+            if (parsedData.match(/^\d+\["message"/)) {
+              try {
+                // Extraer la parte JSON del mensaje
+                const jsonStartIndex = parsedData.indexOf('["message","') + 11;
+                const jsonEndIndex = parsedData.lastIndexOf('"]');
+                if (jsonStartIndex > 0 && jsonEndIndex > jsonStartIndex) {
+                  const jsonStr = parsedData.substring(jsonStartIndex, jsonEndIndex);
+                  // Reemplazar escape de comillas dentro del JSON
+                  const cleanJson = jsonStr.replace(/\\\"([^\\\"]*)\\\"/g, '"$1"');
+                  const messageObj = JSON.parse(cleanJson);
+                  
+                  // Extraer contenido y gráficos si existen
+                  if (messageObj.message && messageObj.message.content) {
+                    messageContent = messageObj.message.content;
+                  }
+                  
+                  // Extraer gráficos de quoteData si existen
+                  if (messageObj.quoteData && messageObj.quoteData.graphs && Array.isArray(messageObj.quoteData.graphs)) {
+                    graphUrls = messageObj.quoteData.graphs.map((graph: string) => 
+                      `https://sophi-agent.sistemaoperaciones.com${graph}`
+                    );
+                  }
+                }
+              } catch (error) {
+                console.error('Error al procesar mensaje con formato numérico:', error);
+                messageContent = parsedData;
+              }
+            } else {
+              // Si ya es una cadena de texto después de parsear
+              messageContent = parsedData;
+            }
           } else if (parsedData && typeof parsedData === 'object') {
             // Es un objeto, extraer el contenido según su estructura
             if (parsedData.message) {
-              messageContent = typeof parsedData.message === 'string' ? parsedData.message : JSON.stringify(parsedData.message);
+              // Verificar si es un objeto con estructura compleja que incluye quoteData
+              if (typeof parsedData.message === 'object' && parsedData.message.content) {
+                messageContent = parsedData.message.content;
+              } else {
+                messageContent = typeof parsedData.message === 'string' ? parsedData.message : JSON.stringify(parsedData.message);
+              }
+              
+              // Extraer gráficos si existen en quoteData
+              if (parsedData.quoteData && parsedData.quoteData.graphs && Array.isArray(parsedData.quoteData.graphs)) {
+                graphUrls = parsedData.quoteData.graphs.map((graph: string) => 
+                  `https://sophi-agent.sistemaoperaciones.com${graph}`
+                );
+              }
             } else if (parsedData.content) {
               messageContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
             } else if (parsedData.userMessage) {
@@ -361,8 +405,15 @@ export default function ChatInterface() {
           }
           
           console.log('Contenido extraído del mensaje que se mostrará:', messageContent);
+          console.log('Gráficos encontrados:', graphUrls);
+          
           // Paso 4: Añadir el mensaje procesado al chat si pasó todos los filtros
-          addBotMessage(messageContent);
+          if (graphUrls.length > 0) {
+            // Si hay gráficos, usamos la función especial para mensajes con imágenes
+            addBotMessageWithGraphs(messageContent, graphUrls);
+          } else {
+            addBotMessage(messageContent);
+          }
           
           // Desactivar indicador de espera cuando se recibe una respuesta
           setIsWaitingResponse(false);
@@ -424,6 +475,32 @@ export default function ChatInterface() {
       content: messageContent,
       sender: "bot",
       timestamp: new Date()
+    }]);
+  };
+  
+  // Helper para añadir mensajes del bot con gráficos/imágenes
+  const addBotMessageWithGraphs = (content: string, graphs: string[]) => {
+    let messageContent = content;
+    
+    try {
+      // Verifica si el contenido parece ser un JSON string
+      if (content.startsWith('{') && content.includes('content')) {
+        const parsedContent = JSON.parse(content);
+        if (parsedContent.content) {
+          messageContent = parsedContent.content;
+        }
+      }
+    } catch {
+      console.log('No es un JSON válido, usando texto original');
+    }
+    
+    setMessages(prevMessages => [...prevMessages, {
+      id: Date.now().toString(),
+      content: messageContent,
+      sender: "bot",
+      timestamp: new Date(),
+      type: "image",
+      graphs: graphs
     }]);
   };
 
@@ -640,6 +717,32 @@ export default function ChatInterface() {
     })
   }
 
+  // Función para descargar imagen
+  const downloadImage = (imageUrl: string, fileName: string) => {
+    fetch(imageUrl)
+      .then(response => response.blob())
+      .then(blob => {
+        // Crear un objeto URL para el blob
+        const url = window.URL.createObjectURL(blob);
+        
+        // Crear un elemento <a> temporal
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        
+        // Añadir el enlace al documento y simular clic
+        document.body.appendChild(link);
+        link.click();
+        
+        // Limpiar y eliminar el enlace
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(error => {
+        console.error('Error al descargar la imagen:', error);
+      });
+  }
+
   return (
     <div className="w-screen h-screen overflow-hidden">
         {/* Modal de Login */}
@@ -837,6 +940,65 @@ export default function ChatInterface() {
                               src={message.audioUrl} 
                               className="max-w-[200px] h-8"
                             />
+                          </div>
+                        </div>
+                      ) : message.type === "image" ? (
+                        <div className="flex flex-col gap-4">
+                          <p
+                            className={`text-sm ${
+                              message.sender === "user" ? "text-white" : "text-slate-900 dark:text-slate-100"
+                            }`}
+                          >
+                            {message.content}
+                          </p>
+                          <div className="flex flex-col gap-3">
+                            {message.graphs?.map((graphUrl, index) => (
+                              <div key={index} className="flex flex-col gap-2">
+                                <div className="relative group">
+                                  <img 
+                                    src={graphUrl} 
+                                    alt={`Gráfico ${index + 1}`} 
+                                    className="max-w-full rounded-md shadow-sm" 
+                                    style={{ maxHeight: '300px' }}
+                                    onError={(e) => {
+                                      console.error('Error al cargar imagen:', graphUrl);
+                                      (e.target as HTMLImageElement).style.display = 'none';
+                                    }}
+                                  />
+                                  <div className="absolute top-2 right-2 flex gap-2 opacity-70 hover:opacity-100">
+                                    <Button 
+                                      size="icon"
+                                      variant="secondary"
+                                      className="h-8 w-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm hover:bg-white dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400"
+                                      title="Abrir en nueva pestaña"
+                                      onClick={() => window.open(graphUrl, '_blank')}
+                                    >
+                                      <ExternalLink className="h-4 w-4" />
+                                    </Button>
+                                    <Button 
+                                      size="icon"
+                                      variant="secondary"
+                                      className="h-8 w-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm hover:bg-white dark:hover:bg-gray-800 text-green-600 dark:text-green-400"
+                                      title="Descargar imagen"
+                                      onClick={() => downloadImage(graphUrl, `grafico-${index+1}.png`)}
+                                    >
+                                      <Download className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                                <div className="flex justify-center">
+                                  <Button 
+                                    variant="outline" 
+                                    size="sm"
+                                    className="bg-blue-50 hover:bg-blue-100 text-blue-600 border-blue-200 hover:border-blue-300 dark:bg-blue-900/20 dark:hover:bg-blue-900/30 dark:text-blue-400 dark:border-blue-900/50 flex items-center gap-2"
+                                    onClick={() => window.open(graphUrl, '_blank', 'width=800,height=600,menubar=no,toolbar=no,location=no,status=no')}
+                                  >
+                                    <ExternalLink className="h-4 w-4" />
+                                    Visualizar imagen
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       ) : (
