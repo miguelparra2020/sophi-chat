@@ -180,24 +180,34 @@ export default function ChatInterface() {
       // Escuchar mensajes entrantes
       socketRef.current.on('message', (data) => {
         try {
+          console.log('Datos recibidos sin procesar:', data);
+          // Paso 1: Asegurarse de que tenemos un objeto (parsear si es string)
           const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
           
-          // Manejo de la estructura de mensajes
-          if (parsedData.messageType) {
-            // Añadir el mensaje al chat con audio si está disponible
-            console.log('Datos recibidos:', parsedData);
-            addBotMessage(parsedData.message);
-          } else if (parsedData.content) {
-            // Si tiene estructura {content: "mensaje"}
-            console.log('Mensaje con content:', parsedData);
-            addBotMessage(parsedData.content);
+          // Paso 2: Extraer el contenido del mensaje según la estructura recibida
+          let messageContent = '';
+          
+          if (typeof parsedData === 'string') {
+            // Si ya es una cadena de texto después de parsear
+            messageContent = parsedData;
+          } else if (parsedData && typeof parsedData === 'object') {
+            // Es un objeto, extraer el contenido según su estructura
+            if (parsedData.message) {
+              messageContent = typeof parsedData.message === 'string' ? parsedData.message : JSON.stringify(parsedData.message);
+            } else if (parsedData.content) {
+              messageContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
+            } else {
+              // Si no tiene una propiedad clara, usar una representación de texto del objeto
+              messageContent = 'Mensaje recibido: ' + JSON.stringify(parsedData);
+            }
           } else {
-            // Compatibilidad con versiones anteriores o texto simple
-            console.log('Estructura antigua de mensaje:', parsedData);
-            // Si es string, usar directamente, si no, convertir a string
-            const messageText = typeof parsedData === 'string' ? parsedData : JSON.stringify(parsedData);
-            addBotMessage(messageText);
+            // Fallback para cualquier otro tipo de datos
+            messageContent = String(parsedData);
           }
+          
+          console.log('Contenido extraído del mensaje:', messageContent);
+          // Paso 3: Añadir el mensaje procesado al chat
+          addBotMessage(messageContent);
         } catch (error) {
           console.error('Error al procesar mensaje:', error);
         }
