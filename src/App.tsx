@@ -475,7 +475,7 @@ export default function ChatInterface() {
       setMessages(prevMessages => [...prevMessages, {
         id: loadingMessageId,
         content: "Enviando mensaje de audio...",
-        sender: "user",
+        sender: "bot",
         timestamp: new Date(),
         type: "system"
       }]);
@@ -489,7 +489,8 @@ export default function ChatInterface() {
       reader.readAsDataURL(audioBlob);
       
       reader.onloadend = () => {
-        const base64Audio = reader.result as string;
+        // Extraer solo la parte de Base64 (sin el prefijo data:audio/webm;base64,)
+        const base64Data = (reader.result as string).split(',')[1];
         
         // Enviar audio por WebSocket
         if (socketRef.current?.connected) {
@@ -506,17 +507,20 @@ export default function ChatInterface() {
             }];
           });
           
-          // Activar indicador de espera
           setIsWaitingResponse(true);
           
-          // Enviar el audio al servidor
-          socketRef.current.emit('audio_message', {
-            audio: base64Audio,
-            timestamp: new Date().toISOString(),
-            format: 'audio/webm',
-            language: 'es'
-          });
+          // Enviar el audio al servidor con el nuevo formato
+          const message = {
+            type: 'audio',
+            content: base64Data,
+            metadata: {
+              mimeType: audioBlob.type,
+              size: audioBlob.size
+            },
+            room: 'sophi-wss'
+          };
           
+          socketRef.current.emit('message', JSON.stringify(message));
           console.log('Audio enviado por WebSocket');
         } else {
           // Mostrar error si no hay conexión
