@@ -185,13 +185,29 @@ export default function ChatInterface() {
       // Escuchar mensajes entrantes
       socketRef.current.on('message', (data) => {
         try {
-          console.log('Datos recibidos sin procesar:', data);
+          console.log('Datos recibidos sin procesar:', data.status);
           
           // Filtro para mensajes técnicos de varios formatos
           if (typeof data === 'string') {
             try {
               // Intentamos parsear para verificar la estructura
               const testObj = JSON.parse(data);
+              console.log("testObj:", testObj)
+              // CASO ESPECIAL: Manejar transcription_complete como mensaje del usuario
+              if (testObj.status === 'transcription_complete') {
+                console.log('transcrip:', testObj);
+                
+                // Añadir como mensaje del usuario
+                setMessages(prevMessages => [...prevMessages, {
+                  id: Date.now().toString(),
+                  content: testObj.message.content,
+                  sender: "user", // Importante: lo marcamos como mensaje del usuario
+                  timestamp: new Date(),
+                  type: "transcription" // Tipo específico para transcripciones
+                }]);
+                
+                return; // Ya procesamos este mensaje
+              }
               
               // Caso 1: Filtrar mensajes con status "received"
               if (testObj.status === 'received' && testObj.messageType) {
@@ -199,16 +215,16 @@ export default function ChatInterface() {
                 console.log('Mensaje de confirmación "received" filtrado:', data);
                 return; // No procesar este mensaje
               }
-              // Caso 2: Filtrar mensajes con status "received"
+              // Caso 2: Filtrar mensajes con status "processing"
               if (testObj.status === 'processing' && testObj.messageType) {
-                // Estos son mensajes técnicos de confirmación de recepción
-                console.log('Mensaje de confirmación "received" filtrado:', data);
+                // Estos son mensajes técnicos de procesamiento
+                console.log('Mensaje de procesamiento filtrado:', data);
                 return; // No procesar este mensaje
               }
-              // Caso 2: Filtrar mensajes con status "received"
+              // Caso 3: Filtrar mensajes de procesamiento de audio
               if (testObj.status === 'processing_audio' && testObj.messageType) {
-                // Estos son mensajes técnicos de confirmación de recepción
-                console.log('Mensaje de confirmación "received" filtrado:', data);
+                // Estos son mensajes técnicos de procesamiento de audio
+                console.log('Mensaje de procesamiento de audio filtrado:', data);
                 return; // No procesar este mensaje
               }
             } catch {
@@ -915,7 +931,7 @@ export default function ChatInterface() {
                       className={`p-3 ${
                         message.type === "system"
                           ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                          : message.sender === "user"
+                          : message.sender === "user" || message.type === "transcription"
                             ? "bg-blue-500 text-white border-blue-500"
                             : "bg-white dark:bg-slate-700 border-slate-200 dark:border-slate-600"
                       }`}
@@ -926,6 +942,14 @@ export default function ChatInterface() {
                           className="mb-2 bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
                         >
                           Sistema
+                        </Badge>
+                      )}
+                      {message.type === "transcription" && (
+                        <Badge
+                          variant="secondary"
+                          className="mb-2 bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
+                        >
+                          Transcripción
                         </Badge>
                       )}
                       {message.type === "audio" ? (
