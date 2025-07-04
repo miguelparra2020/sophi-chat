@@ -2,7 +2,7 @@ import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
 import { io, Socket } from "socket.io-client"
-import { Send, Settings, User, Bot, Mic, X, Power, Lock, AtSign } from "lucide-react"
+import { Send, Settings, User, Bot, Mic, X, Power, Lock, AtSign, Loader2 } from "lucide-react"
 import { Button } from "./components/ui/button"
 import { Input } from "./components/ui/input"
 import { Card } from "./components/ui/card"
@@ -24,6 +24,7 @@ export default function ChatInterface() {
   const [inputMessage, setInputMessage] = useState("")
   const [isRecording, setIsRecording] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [isWaitingResponse, setIsWaitingResponse] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
   const [showLoginModal, setShowLoginModal] = useState(false)
   const [username, setUsername] = useState("")
@@ -34,6 +35,8 @@ export default function ChatInterface() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const socketRef = useRef<Socket | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
   console.log("socketStatus", socketStatus)
   // Función para mostrar el modal de login
   const openLoginModal = () => {
@@ -194,7 +197,13 @@ export default function ChatInterface() {
                 console.log('Mensaje de confirmación "received" filtrado:', data);
                 return; // No procesar este mensaje
               }
-            } catch (e) {
+              // Caso 2: Filtrar mensajes con status "received"
+              if (testObj.status === 'processing' && testObj.messageType) {
+                // Estos son mensajes técnicos de confirmación de recepción
+                console.log('Mensaje de confirmación "received" filtrado:', data);
+                return; // No procesar este mensaje
+              }
+            } catch {
               // Si hay error al parsear, permitimos que el flujo continúe
             }
           }
@@ -257,6 +266,9 @@ export default function ChatInterface() {
           console.log('Contenido extraído del mensaje que se mostrará:', messageContent);
           // Paso 4: Añadir el mensaje procesado al chat si pasó todos los filtros
           addBotMessage(messageContent);
+          
+          // Desactivar indicador de espera cuando se recibe una respuesta
+          setIsWaitingResponse(false);
         } catch (error) {
           console.error('Error al procesar mensaje:', error);
         }
@@ -353,6 +365,9 @@ export default function ChatInterface() {
       
       setMessages([...messages, newMessage])
       
+      // Activar indicador de espera
+      setIsWaitingResponse(true);
+      
       // Enviar mensaje al servidor WebSocket si está conectado
       if (socketRef.current?.connected) {
         socketRef.current.emit('message', {
@@ -362,6 +377,7 @@ export default function ChatInterface() {
       } else {
         // Si no hay conexión, mostrar mensaje de error
         addSystemMessage("No se pudo enviar el mensaje: WebSocket desconectado");
+        setIsWaitingResponse(false); // Desactivar indicador en caso de error
       }
       
       setInputMessage("")
@@ -375,8 +391,143 @@ export default function ChatInterface() {
     }
   }
 
-  const toggleRecording = () => {
-    setIsRecording(!isRecording)
+  const toggleRecording = async () => {
+    // Si ya estamos grabando, detener la grabación
+    if (isRecording) {
+      stopRecording();
+      return;
+    }
+    
+    try {
+      // Solicitar permisos de micrófono
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      
+      // Configurar MediaRecorder con opciones óptimas
+      const options = { mimeType: 'audio/webm' };
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+      
+      // Capturar datos de audio cada 250ms para mejor calidad
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          console.log('Chunk de audio recibido, tamaño:', event.data.size);
+        }
+      };
+      
+      // Cuando la grabación se detiene
+      mediaRecorder.onstop = () => {
+        // Crear blob de audio con los chunks recolectados
+        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        sendAudioMessage(audioBlob);
+        
+        // Liberar el stream
+        stream.getTracks().forEach(track => track.stop());
+      };
+      
+      // Iniciar grabación con intervalos de datos cada 250ms
+      mediaRecorder.start(250);
+      setIsRecording(true);
+      
+      // Configurar un tiempo máximo de grabación (30 segundos)
+      setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          stopRecording();
+          console.log('Grabación detenida automáticamente (límite de tiempo)');
+        }
+      }, 30000);
+      
+      console.log('Grabación de audio iniciada');
+    } catch (error) {
+      console.error('Error al iniciar grabación:', error);
+      addSystemMessage(`Error al acceder al micrófono: ${error instanceof Error ? error.message : 'Permiso denegado'}`);
+    }
+  }
+
+  // Función para detener la grabación en curso
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      try {
+        mediaRecorderRef.current.stop();
+        setIsRecording(false);
+        console.log('Grabación de audio detenida');
+        addSystemMessage("Grabación de audio finalizada");
+      } catch (error) {
+        console.error('Error al detener grabación:', error);
+        setIsRecording(false);
+      }
+    }
+  }
+
+  // Función para enviar mensaje de audio al servidor
+  const sendAudioMessage = async (audioBlob: Blob) => {
+    try {
+      // Verificar que el audio tenga contenido
+      if (audioBlob.size === 0) {
+        addSystemMessage("No se detectó audio en la grabación");
+        return;
+      }
+      
+      // Mostrar mensaje de carga mientras se procesa el audio
+      const loadingMessageId = Date.now().toString();
+      setMessages(prevMessages => [...prevMessages, {
+        id: loadingMessageId,
+        content: "Enviando mensaje de audio...",
+        sender: "user",
+        timestamp: new Date(),
+        type: "system"
+      }]);
+      
+      // Comprobar si el dispositivo puede reproducir el audio (para depuración)
+      const audioURL = URL.createObjectURL(audioBlob);
+      console.log('Audio grabado disponible en:', audioURL);
+      
+      // Convertir el audio a base64 para enviar por WebSocket
+      const reader = new FileReader();
+      reader.readAsDataURL(audioBlob);
+      
+      reader.onloadend = () => {
+        const base64Audio = reader.result as string;
+        
+        // Enviar audio por WebSocket
+        if (socketRef.current?.connected) {
+          // Mensaje visual para el usuario
+          setMessages(prevMessages => {
+            const newMessages = prevMessages.filter(msg => msg.id !== loadingMessageId);
+            return [...newMessages, {
+              id: Date.now().toString(),
+              content: "Mensaje de audio enviado, esperando respuesta...",
+              sender: "user",
+              timestamp: new Date()
+            }];
+          });
+          
+          // Activar indicador de espera
+          setIsWaitingResponse(true);
+          
+          // Enviar el audio al servidor
+          socketRef.current.emit('audio_message', {
+            audio: base64Audio,
+            timestamp: new Date().toISOString(),
+            format: 'audio/webm',
+            language: 'es'
+          });
+          
+          console.log('Audio enviado por WebSocket');
+        } else {
+          // Mostrar error si no hay conexión
+          setMessages(prevMessages => {
+            const newMessages = prevMessages.filter(msg => msg.id !== loadingMessageId);
+            return [...newMessages];
+          });
+          addSystemMessage("No se pudo enviar el audio: WebSocket desconectado");
+        }
+      };
+    } catch (error) {
+      console.error('Error al procesar audio:', error);
+      addSystemMessage(`Error al enviar audio: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+    }
   }
 
   const formatTime = (date: Date) => {
@@ -505,6 +656,27 @@ export default function ChatInterface() {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 w-full">
+            {/* Indicador de espera (tres puntos de carga) */}
+            {isWaitingResponse && (
+              <div className="flex justify-start">
+                <div className="flex items-start space-x-3 max-w-[80%]">
+                  <Avatar className="h-8 w-8 flex-shrink-0">
+                    <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                      <Bot className="h-4 w-4" />
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col items-start">
+                    <Card className="p-4 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-600">
+                      <div className="flex items-center space-x-2">
+                        <Loader2 className="h-4 w-4 animate-spin text-slate-500" />
+                        <p className="text-sm text-slate-500">Sophi está escribiendo...</p>
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
                 <div
