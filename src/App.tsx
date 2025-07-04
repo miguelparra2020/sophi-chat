@@ -1,6 +1,7 @@
 import type React from "react"
 
 import { useState, useRef, useEffect } from "react"
+import { io, Socket } from "socket.io-client"
 import { Send, Settings, User, Bot, Mic, X, Power, Lock, AtSign } from "lucide-react"
 import { Button } from "./components/ui/button"
 import { Input } from "./components/ui/input"
@@ -29,8 +30,10 @@ export default function ChatInterface() {
   const [password, setPassword] = useState("")
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [loginError, setLoginError] = useState<string | null>(null)
+  const [socketStatus, setSocketStatus] = useState<string>("desconectado")
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const socketRef = useRef<Socket | null>(null)
   
   // Función para mostrar el modal de login
   const openLoginModal = () => {
@@ -80,8 +83,12 @@ export default function ChatInterface() {
       const data = await response.json();
       console.log("data", data)
       if (data && data.access) {
-        setAuthToken(data.access)
+        const token = data.access;
+        setAuthToken(token)
         setIsConnected(true)
+        
+        // Conectar al WebSocket después de autenticar
+        connectWebSocket(token);
         
         // Mostrar mensajes iniciales
         setMessages([
@@ -120,12 +127,128 @@ export default function ChatInterface() {
     }
   }
   
+  // Función para conectar al servidor WebSocket
+  const connectWebSocket = (token: string) => {
+    try {
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+      }
+      console.log("token", token)
+      setSocketStatus("conectando");
+      
+      // Crear conexión Socket.IO con token de autenticación
+      console.log('Iniciando conexión a Socket.IO...');
+      
+      socketRef.current = io('wss://sophi-wss.sistemaoperaciones.com', {
+        path: '/sophi-wss',
+        transports: ['websocket'],
+        auth: { token: token },
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        forceNew: true,
+        timeout: 10000
+      });
+      
+      // Eventos del socket
+      socketRef.current.on('connect', () => {
+        console.log('¡Evento connect recibido!', socketRef.current?.id);
+        setSocketStatus("conectado");
+        addSystemMessage("Conexión WebSocket establecida");
+      });
+      
+      socketRef.current.on('disconnect', () => {
+        setSocketStatus("desconectado");
+        addSystemMessage("WebSocket desconectado");
+      });
+      
+      socketRef.current.on('error', (error) => {
+        console.error('Error de socket:', error);
+        setSocketStatus(`error: ${error}`);
+        addSystemMessage(`Error de WebSocket: ${error}`);
+      });
+      
+      socketRef.current.on('connect_error', (error) => {
+        console.error('Error de conexión:', error);
+        console.log('Mensaje completo:', error.message);
+        setSocketStatus(`error de conexión: ${error.message}`);
+        addSystemMessage(`Error de conexión WebSocket: ${error.message}`);
+      });
+      
+      // Escuchar mensajes entrantes
+      socketRef.current.on('message', (data) => {
+        try {
+          const parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+          
+          // Manejo de la estructura de mensajes
+          if (parsedData.messageType) {
+            // Añadir el mensaje al chat con audio si está disponible
+            console.log('Datos recibidos:', parsedData);
+            addBotMessage(parsedData.message);
+          } else {
+            // Compatibilidad con versiones anteriores
+            console.log('Estructura antigua de mensaje:', parsedData);
+            addBotMessage(parsedData);
+          }
+        } catch (error) {
+          console.error('Error al procesar mensaje:', error);
+        }
+      });
+      
+      // Verificar estado después de un retraso
+      setTimeout(() => {
+        if (socketRef.current?.connected) {
+          console.log('Socket está conectado después del timeout');
+          setSocketStatus("conectado");
+        } else {
+          console.log('Socket NO está conectado después del timeout');
+          setSocketStatus("problema al conectar");
+          addSystemMessage("Problema al conectar con el servidor WebSocket");
+        }
+      }, 3000);
+      
+    } catch (error) {
+      console.error('Error al configurar WebSocket:', error);
+      setSocketStatus(`error: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+      addSystemMessage(`Error al configurar WebSocket: ${error instanceof Error ? error.message : 'Error desconocido'}`);
+    }
+  };
+
+  // Helper para añadir mensajes del sistema
+  const addSystemMessage = (content: string) => {
+    setMessages(prevMessages => [...prevMessages, {
+      id: Date.now().toString(),
+      content,
+      sender: "bot",
+      timestamp: new Date(),
+      type: "system",
+    }]);
+  };
+
+  // Helper para añadir mensajes del bot
+  const addBotMessage = (content: string | any) => {
+    const messageContent = typeof content === 'string' ? content : JSON.stringify(content);
+    setMessages(prevMessages => [...prevMessages, {
+      id: Date.now().toString(),
+      content: messageContent,
+      sender: "bot",
+      timestamp: new Date()
+    }]);
+  };
+
   // Función para cerrar el chat
   const closeChat = () => {
+    // Desconectar socket
+    if (socketRef.current) {
+      socketRef.current.disconnect();
+      socketRef.current = null;
+    }
+    
     setIsConnected(false)
     setMessages([])
     setShowSettingsModal(false)
     setAuthToken(null)
+    setSocketStatus("desconectado")
   }
 
   const scrollToBottom = () => {
@@ -137,28 +260,30 @@ export default function ChatInterface() {
   }, [messages])
 
   const handleSendMessage = () => {
-    if (inputMessage.trim() === "") return
-
-    const newMessage: Message = {
-      id: Date.now().toString(),
-      content: inputMessage,
-      sender: "user",
-      timestamp: new Date(),
-    }
-
-    setMessages((prev) => [...prev, newMessage])
-    setInputMessage("")
-
-    // Simulate bot response
-    setTimeout(() => {
-      const botResponse: Message = {
-        id: (Date.now() + 1).toString(),
-        content: "Gracias por tu mensaje. Estoy procesando tu solicitud...",
-        sender: "bot",
+    if (inputMessage.trim() !== "") {
+      // Agregar mensaje del usuario
+      const newMessage: Message = {
+        id: Date.now().toString(),
+        content: inputMessage,
+        sender: "user",
         timestamp: new Date(),
       }
-      setMessages((prev) => [...prev, botResponse])
-    }, 1000)
+      
+      setMessages([...messages, newMessage])
+      
+      // Enviar mensaje al servidor WebSocket si está conectado
+      if (socketRef.current?.connected) {
+        socketRef.current.emit('message', {
+          message: inputMessage,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Si no hay conexión, mostrar mensaje de error
+        addSystemMessage("No se pudo enviar el mensaje: WebSocket desconectado");
+      }
+      
+      setInputMessage("")
+    }
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
