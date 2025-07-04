@@ -15,7 +15,8 @@ interface Message {
   content: string
   sender: "user" | "bot"
   timestamp: Date
-  type?: "text" | "system"
+  type?: "text" | "system" | "audio"
+  audioUrl?: string // URL para reproducir el audio
 }
 
 export default function ChatInterface() {
@@ -492,14 +493,16 @@ export default function ChatInterface() {
         
         // Enviar audio por WebSocket
         if (socketRef.current?.connected) {
-          // Mensaje visual para el usuario
+          // Mensaje visual para el usuario con reproductor de audio
           setMessages(prevMessages => {
             const newMessages = prevMessages.filter(msg => msg.id !== loadingMessageId);
             return [...newMessages, {
               id: Date.now().toString(),
-              content: "Mensaje de audio enviado, esperando respuesta...",
+              content: "Audio", // Etiqueta simple ya que el audio será visible
               sender: "user",
-              timestamp: new Date()
+              timestamp: new Date(),
+              type: "audio", // Marcar como mensaje de audio
+              audioUrl: audioURL // Guardar la URL del audio para reproducción
             }];
           });
           
@@ -712,17 +715,34 @@ export default function ChatInterface() {
                           Sistema
                         </Badge>
                       )}
-                      <p
-                        className={`text-sm ${
-                          message.type === "system"
-                            ? "text-green-800 dark:text-green-200"
-                            : message.sender === "user"
-                              ? "text-white"
-                              : "text-slate-900 dark:text-slate-100"
-                        }`}
-                      >
-                        {message.content}
-                      </p>
+                      {message.type === "audio" ? (
+                        <div className="flex flex-col gap-1">
+                          <p
+                            className={`text-sm ${
+                              message.sender === "user" ? "text-white" : "text-slate-900 dark:text-slate-100"
+                            }`}
+                          >
+                            Mensaje de audio:
+                          </p>
+                          <audio 
+                            controls 
+                            src={message.audioUrl} 
+                            className="max-w-[200px] h-8"
+                          />
+                        </div>
+                      ) : (
+                        <p
+                          className={`text-sm ${
+                            message.type === "system"
+                              ? "text-green-800 dark:text-green-200"
+                              : message.sender === "user"
+                                ? "text-white"
+                                : "text-slate-900 dark:text-slate-100"
+                          }`}
+                        >
+                          {message.content}
+                        </p>
+                      )}
                     </Card>
                     <span className="text-xs text-slate-500 dark:text-slate-400 mt-1">{formatTime(message.timestamp)}</span>
                   </div>
