@@ -32,6 +32,7 @@ export default function ChatInterface() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [authToken, setAuthToken] = useState<string | null>(null)
+  const [userInfo, setUserInfo] = useState<any | null>(null)
 
   // Efecto para cargar el token desde localStorage al iniciar
   useEffect(() => {
@@ -41,6 +42,7 @@ export default function ChatInterface() {
       setAuthToken(storedToken);
       setIsConnected(true);
       connectWebSocket(storedToken);
+      fetchUserInfo(storedToken); // Obtener info del usuario al cargar
     } else {
       console.log('🚪 [INIT] No se encontró token. Mostrando modal de login.');
       setShowLoginModal(true);
@@ -60,6 +62,34 @@ export default function ChatInterface() {
     setShowLoginModal(true)
     setLoginError(null)
   }
+
+  const fetchUserInfo = async (token: string) => {
+    console.log('ℹ️ [USER] Obteniendo información del usuario...');
+    try {
+      const response = await fetch('https://sophi-auth.sistemaoperaciones.com/api/users/user/info/', {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.warn('⚠️ [USER] Token inválido o expirado. Cerrando sesión.');
+          closeChat();
+        }
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
+      const userData = await response.json();
+      console.log('👤 [USER] Información del usuario obtenida:', userData);
+      setUserInfo(userData);
+      localStorage.setItem('userInfo', JSON.stringify(userData));
+    } catch (error) {
+      console.error('💥 [USER] Error al obtener la información del usuario:', error);
+    }
+  };
 
   // Función para autenticar y luego iniciar el chat
   const handleLogin = async () => {
@@ -126,6 +156,8 @@ export default function ChatInterface() {
         console.log('🔌 [AUTH] Iniciando conexión WebSocket con token...');
         // Conectar al WebSocket después de autenticar
         connectWebSocket(token);
+        // Obtener la información del usuario
+        fetchUserInfo(token);
         
         // Mostrar mensajes iniciales
         setMessages([
@@ -615,7 +647,9 @@ export default function ChatInterface() {
     setMessages([])
     setShowSettingsModal(false)
     setAuthToken(null)
+    setUserInfo(null)
     localStorage.removeItem('authToken')
+    localStorage.removeItem('userInfo')
     setSocketStatus("desconectado")
   }
 
