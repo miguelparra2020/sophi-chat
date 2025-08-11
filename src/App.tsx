@@ -32,6 +32,20 @@ export default function ChatInterface() {
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [authToken, setAuthToken] = useState<string | null>(null)
+
+  // Efecto para cargar el token desde localStorage al iniciar
+  useEffect(() => {
+    const storedToken = localStorage.getItem('authToken');
+    if (storedToken) {
+      console.log('🔌 [INIT] Token encontrado en localStorage. Autenticando...');
+      setAuthToken(storedToken);
+      setIsConnected(true);
+      connectWebSocket(storedToken);
+    } else {
+      console.log('🚪 [INIT] No se encontró token. Mostrando modal de login.');
+      setShowLoginModal(true);
+    }
+  }, []);
   const [loginError, setLoginError] = useState<string | null>(null)
   const [socketStatus, setSocketStatus] = useState<string>("desconectado")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -106,6 +120,7 @@ export default function ChatInterface() {
         console.log('🔑 [AUTH] Token (primeros 20 caracteres):', token.substring(0, 20) + '...');
         
         setAuthToken(token)
+        localStorage.setItem('authToken', token); // Guardar token en localStorage
         setIsConnected(true)
         
         console.log('🔌 [AUTH] Iniciando conexión WebSocket con token...');
@@ -164,7 +179,7 @@ export default function ChatInterface() {
       
       // Crear conexión Socket.IO con token de autenticación
       console.log('📡 [WEBSOCKET] Configurando conexión Socket.IO...');
-      console.log('🌐 [WEBSOCKET] URL del servidor: http://localhost:3000');
+      console.log('🌐 [WEBSOCKET] URL del servidor: wss://sophi-wss.sistemaoperaciones.com');
       console.log('🛤️ [WEBSOCKET] Path: /sophi-wss');
       console.log('⚙️ [WEBSOCKET] Configuración:', {
         transports: ['websocket'],
@@ -600,6 +615,7 @@ export default function ChatInterface() {
     setMessages([])
     setShowSettingsModal(false)
     setAuthToken(null)
+    localStorage.removeItem('authToken')
     setSocketStatus("desconectado")
   }
 
