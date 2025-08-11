@@ -33,6 +33,7 @@ export default function ChatInterface() {
   const [password, setPassword] = useState("")
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [userInfo, setUserInfo] = useState<any | null>(null)
+  const [activeSession, setActiveSession] = useState<any | null>(null);
 
   console.log("userInfo:", userInfo)
 
@@ -46,6 +47,13 @@ export default function ChatInterface() {
       console.log('✅ [INIT] Token encontrado. Procediendo a autenticar sesión existente.');
       setAuthToken(storedToken);
       setIsConnected(true);
+
+      const storedSession = localStorage.getItem('activeSession');
+      if (storedSession) {
+        console.log('✅ [INIT] Sesión activa encontrada en localStorage.');
+        setActiveSession(JSON.parse(storedSession));
+      }
+
       connectWebSocket(storedToken);
       fetchUserInfo(storedToken);
     } else {
@@ -53,6 +61,82 @@ export default function ChatInterface() {
       setShowLoginModal(true);
     }
   }, []);
+
+  // Efecto para obtener o crear una sesión de chat cuando el usuario está disponible
+  useEffect(() => {
+    const handleSessionManagement = async (user: any) => {
+      if (!user || !user.id) return;
+
+      const storedToken = localStorage.getItem('authToken');
+      if (!storedToken) {
+        console.error('[SESSION] No auth token found for session management.');
+        return;
+      }
+
+      console.log('🔄 [SESSION] Iniciando gestión de sesión para el usuario:', user.id);
+      const WSS_API_URL = 'https://sophi-wss.sistemaoperaciones.com/api/chat';
+
+      try {
+        console.log(`📡 [SESSION] Consultando sesiones existentes para el usuario ${user.id}...`);
+        const response = await fetch(`${WSS_API_URL}/sessions/${user.id}`, {
+          headers: {
+            'Authorization': `Bearer ${storedToken}`
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Error al consultar sesiones: ${response.status}`);
+        }
+
+        const sessions = await response.json();
+        console.log('✅ [SESSION] Sesiones encontradas:', sessions);
+
+        if (sessions && sessions.length > 0) {
+          console.log('📌 [SESSION] Usando la primera sesión encontrada como activa.');
+          const sessionToActivate = sessions[0];
+          setActiveSession(sessionToActivate);
+          localStorage.setItem('activeSession', JSON.stringify(sessionToActivate));
+        } else {
+          console.log('🤔 [SESSION] No se encontraron sesiones. Creando una nueva...');
+          
+          const newSessionPayload = {
+            userId: user.id,
+            username: user.username,
+            clientName: 'SophiWebApp',
+            permissions: user.permissions,
+          };
+
+          console.log('📡 [SESSION] Enviando petición para crear nueva sesión...');
+          console.log('📦 [SESSION] Payload:', newSessionPayload);
+
+          const createResponse = await fetch(`${WSS_API_URL}/sessions`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${storedToken}`
+            },
+            body: JSON.stringify(newSessionPayload),
+          });
+
+          if (!createResponse.ok) {
+            const errorBody = await createResponse.text();
+            throw new Error(`Error al crear la sesión: ${createResponse.status} - ${errorBody}`);
+          }
+
+          const newSession = await createResponse.json();
+          console.log('✅ [SESSION] Nueva sesión creada exitosamente:', newSession);
+          setActiveSession(newSession);
+          localStorage.setItem('activeSession', JSON.stringify(newSession));
+        }
+      } catch (error) { 
+        console.error('💥 [SESSION] Error en la gestión de la sesión:', error);
+      }
+    };
+
+    if (userInfo) {
+      handleSessionManagement(userInfo);
+    }
+  }, [userInfo]);
   const [loginError, setLoginError] = useState<string | null>(null)
   const [socketStatus, setSocketStatus] = useState<string>("desconectado")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -644,25 +728,36 @@ export default function ChatInterface() {
 
   // Función para cerrar el chat
   const closeChat = () => {
-    // Desconectar socket
-    if (socketRef.current) {
+    console.log('🚪 [SESSION] Cerrando sesión y limpiando datos...');
+    // Desconectar el socket si está conectado
+    if (socketRef.current?.connected) {
       socketRef.current.disconnect();
-      socketRef.current = null;
     }
-    
-    setIsConnected(false)
-    setMessages([])
-    setShowSettingsModal(false)
-    setAuthToken(null)
-    setUserInfo(null)
-    localStorage.removeItem('authToken')
-    localStorage.removeItem('userInfo')
-    setSocketStatus("desconectado")
+    // Limpiar el estado
+    setAuthToken(null);
+    setUserInfo(null);
+    setActiveSession(null);
+    setIsConnected(false);
+    setMessages([]); // Limpiar mensajes
+    // Limpiar localStorage
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('userInfo');
+    localStorage.removeItem('activeSession');
+    // Mostrar el modal de login
+    setShowLoginModal(true);
+    setLoginError(null);
   }
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
+
+const handleKeyPress = (e: React.KeyboardEvent) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault()
+    handleSendMessage()
+  }
+}
 
   useEffect(() => {
     scrollToBottom()
@@ -685,7 +780,14 @@ export default function ChatInterface() {
       
       // Enviar mensaje al servidor WebSocket si está conectado
       if (socketRef.current?.connected) {
+        if (!activeSession) {
+          addSystemMessage("Error: No hay una sesión de chat activa. No se puede enviar el mensaje.");
+          setIsWaitingResponse(false);
+          return;
+        }
+
         socketRef.current.emit('message', {
+          sessionId: activeSession.sessionId,
           message: inputMessage,
           timestamp: new Date().toISOString()
         });
@@ -699,12 +801,6 @@ export default function ChatInterface() {
     }
   }
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
-    }
-  }
 
   const toggleRecording = async () => {
     // Si ya estamos grabando, detener la grabación
@@ -831,7 +927,7 @@ export default function ChatInterface() {
               mimeType: audioBlob.type,
               size: audioBlob.size
             },
-            room: 'sophi-wss'
+            sessionId: activeSession.sessionId
           };
           
           socketRef.current.emit('message', JSON.stringify(message));
