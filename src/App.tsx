@@ -175,7 +175,9 @@ export default function ChatInterface() {
         timeout: 10000
       });
       
-      socketRef.current = io('http://localhost:3000', {
+      
+      socketRef.current = io('wss://sophi-wss.sistemaoperaciones.com', {
+
         path: '/sophi-wss',
         transports: ['websocket'],
         auth: { token: token },
