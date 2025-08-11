@@ -38,15 +38,18 @@ export default function ChatInterface() {
 
   // Efecto para cargar el token desde localStorage al iniciar
   useEffect(() => {
+    console.log('🔄 [INIT] Iniciando aplicación...');
     const storedToken = localStorage.getItem('authToken');
+    console.log('1️⃣ [INIT] Buscando token en localStorage...');
+
     if (storedToken) {
-      console.log('🔌 [INIT] Token encontrado en localStorage. Autenticando...');
+      console.log('✅ [INIT] Token encontrado. Procediendo a autenticar sesión existente.');
       setAuthToken(storedToken);
       setIsConnected(true);
       connectWebSocket(storedToken);
-      fetchUserInfo(storedToken); // Obtener info del usuario al cargar
+      fetchUserInfo(storedToken);
     } else {
-      console.log('🚪 [INIT] No se encontró token. Mostrando modal de login.');
+      console.log('❌ [INIT] No se encontró token. Se requiere inicio de sesión manual.');
       setShowLoginModal(true);
     }
   }, []);
@@ -66,8 +69,10 @@ export default function ChatInterface() {
   }
 
   const fetchUserInfo = async (token: string) => {
-    console.log('ℹ️ [USER] Obteniendo información del usuario...');
+    console.log('3️⃣ [USER] Iniciando obtención de información del usuario.');
     try {
+      console.log('📡 [USER] Realizando petición GET a: https://sophi-auth.sistemaoperaciones.com/api/users/user/info/');
+      console.log('🔑 [USER] Autorización: Bearer Token');
       const response = await fetch('https://sophi-auth.sistemaoperaciones.com/api/users/user/info/', {
         method: 'GET',
         headers: {
@@ -85,7 +90,7 @@ export default function ChatInterface() {
       }
 
       const userData = await response.json();
-      console.log('👤 [USER] Información del usuario obtenida:', userData);
+      console.log('✅ [USER] Información del usuario obtenida exitosamente:', userData);
       setUserInfo(userData);
       localStorage.setItem('userInfo', JSON.stringify(userData));
     } catch (error) {
@@ -95,7 +100,7 @@ export default function ChatInterface() {
 
   // Función para autenticar y luego iniciar el chat
   const handleLogin = async () => {
-    console.log('🔐 [AUTH] Iniciando proceso de autenticación...');
+    console.log('2️⃣ [AUTH] Iniciando proceso de autenticación manual...');
     try {
       setLoginError(null)
       
@@ -125,8 +130,8 @@ export default function ChatInterface() {
         password
       };
       
-      console.log('📡 [AUTH] Enviando petición de autenticación a:', 'https://sophi-auth.sistemaoperaciones.com/api/users/token/');
-      console.log('📦 [AUTH] Credenciales preparadas (password oculta por seguridad)');
+      console.log('📡 [AUTH] Realizando petición POST a: https://sophi-auth.sistemaoperaciones.com/api/users/token/');
+      console.log('📦 [AUTH] Enviando cuerpo (body) con:', { username });
       
       const response = await fetch('https://sophi-auth.sistemaoperaciones.com/api/users/token/', {
         method: 'POST',
