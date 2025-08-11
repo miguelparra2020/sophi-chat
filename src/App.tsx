@@ -34,6 +34,8 @@ export default function ChatInterface() {
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [userInfo, setUserInfo] = useState<any | null>(null)
 
+  console.log("userInfo:", userInfo)
+
   // Efecto para cargar el token desde localStorage al iniciar
   useEffect(() => {
     const storedToken = localStorage.getItem('authToken');
