@@ -971,7 +971,13 @@ export default function ChatInterface() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center space-x-2 relative">
+              <div className="flex items-center space-x-4 relative">
+                {isConnected && userInfo && (
+                  <div className="text-right">
+                    <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{userInfo.username}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">ID: {userInfo.id}</p>
+                  </div>
+                )}
                 <Button 
                   variant="ghost" 
                   onClick={() => setShowSettingsModal(!showSettingsModal)}
