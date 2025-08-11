@@ -1076,6 +1076,12 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                 {isConnected && userInfo && (
                   <div className="text-right">
                     <p className="text-sm font-medium text-slate-900 dark:text-slate-100">{userInfo.username}</p>
+                    {activeSession && (
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        <p>Session: {activeSession.sessionId}</p>
+                        <p>Room: {activeSession.room}</p>
+                      </div>
+                    )}
                     <p className="text-xs text-slate-500 dark:text-slate-400">ID: {userInfo.id}</p>
                   </div>
                 )}
