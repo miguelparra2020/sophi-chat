@@ -49,13 +49,18 @@ export default function ChatInterface() {
 
   // Función para autenticar y luego iniciar el chat
   const handleLogin = async () => {
+    console.log('🔐 [AUTH] Iniciando proceso de autenticación...');
     try {
       setLoginError(null)
       
       if (!username || !password) {
+        console.log('❌ [AUTH] Validación fallida: campos vacíos');
         setLoginError('Por favor ingresa usuario y contraseña')
         return
       }
+      
+      console.log('✅ [AUTH] Validación de campos exitosa');
+      console.log('👤 [AUTH] Usuario:', username);
       
       // Mostrar mensaje de conexión en progreso
       setShowLoginModal(false)
@@ -73,6 +78,10 @@ export default function ChatInterface() {
         username,
         password
       };
+      
+      console.log('📡 [AUTH] Enviando petición de autenticación a:', 'https://sophi-auth.sistemaoperaciones.com/api/users/token/');
+      console.log('📦 [AUTH] Credenciales preparadas (password oculta por seguridad)');
+      
       const response = await fetch('https://sophi-auth.sistemaoperaciones.com/api/users/token/', {
         method: 'POST',
         headers: {
@@ -81,17 +90,25 @@ export default function ChatInterface() {
         body: JSON.stringify(credentials)
       });
       
+      console.log('📨 [AUTH] Respuesta recibida - Status:', response.status, response.statusText);
+      
       if (!response.ok) {
+        console.log('❌ [AUTH] Error HTTP:', response.status, response.statusText);
         throw new Error(`Error HTTP: ${response.status}`);
       }
       
       const data = await response.json();
-      console.log("data", data)
+      console.log('📋 [AUTH] Datos de respuesta:', data);
+      
       if (data && data.access) {
         const token = data.access;
+        console.log('🎟️ [AUTH] Token JWT obtenido exitosamente');
+        console.log('🔑 [AUTH] Token (primeros 20 caracteres):', token.substring(0, 20) + '...');
+        
         setAuthToken(token)
         setIsConnected(true)
         
+        console.log('🔌 [AUTH] Iniciando conexión WebSocket con token...');
         // Conectar al WebSocket después de autenticar
         connectWebSocket(token);
         
@@ -105,11 +122,18 @@ export default function ChatInterface() {
             type: "system",
           }
         ])
+        
+        console.log('✅ [AUTH] Proceso de autenticación completado exitosamente');
       } else {
+        console.log('❌ [AUTH] Respuesta inválida: no se encontró token de acceso');
+        console.log('📋 [AUTH] Estructura de respuesta recibida:', Object.keys(data));
         throw new Error('No se recibió un token válido');
       }
     } catch (error) {
-      console.error('Error al obtener token:', error);
+      console.error('💥 [AUTH] Error en el proceso de autenticación:', error);
+      console.error('📍 [AUTH] Tipo de error:', error instanceof Error ? error.constructor.name : typeof error);
+      console.error('📄 [AUTH] Mensaje de error:', error instanceof Error ? error.message : error);
+      
       // Mostrar mensaje de error
       setIsConnected(false)
       setLoginError(error instanceof Error ? error.message : 'Error desconocido')
@@ -128,17 +152,30 @@ export default function ChatInterface() {
   
   // Función para conectar al servidor WebSocket
   const connectWebSocket = (token: string) => {
+    console.log('🔌 [WEBSOCKET] Iniciando conexión WebSocket...');
     try {
       if (socketRef.current) {
+        console.log('🔄 [WEBSOCKET] Desconectando socket existente...');
         socketRef.current.disconnect();
       }
-      console.log("token", token)
+      
+      console.log('🎟️ [WEBSOCKET] Token para autenticación (primeros 20 chars):', token.substring(0, 20) + '...');
       setSocketStatus("conectando");
       
       // Crear conexión Socket.IO con token de autenticación
-      console.log('Iniciando conexión a Socket.IO...');
+      console.log('📡 [WEBSOCKET] Configurando conexión Socket.IO...');
+      console.log('🌐 [WEBSOCKET] URL del servidor: http://localhost:3000');
+      console.log('🛤️ [WEBSOCKET] Path: /sophi-wss');
+      console.log('⚙️ [WEBSOCKET] Configuración:', {
+        transports: ['websocket'],
+        reconnection: true,
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+        forceNew: true,
+        timeout: 10000
+      });
       
-      socketRef.current = io('wss://sophi-wss.sistemaoperaciones.com', {
+      socketRef.current = io('http://localhost:3000', {
         path: '/sophi-wss',
         transports: ['websocket'],
         auth: { token: token },
@@ -149,9 +186,12 @@ export default function ChatInterface() {
         timeout: 10000
       });
       
+      console.log('👂 [WEBSOCKET] Configurando event listeners...');
+      
       // Eventos del socket
       socketRef.current.on('connect', () => {
-        console.log('¡Evento connect recibido!', socketRef.current?.id);
+        console.log('✅ [WEBSOCKET] ¡Conexión establecida exitosamente!');
+        console.log('🆔 [WEBSOCKET] Socket ID:', socketRef.current?.id);
         setSocketStatus("conectado");
         addSystemMessage("Conexión WebSocket establecida");
         setMessages([
@@ -164,20 +204,26 @@ export default function ChatInterface() {
         ])
       });
       
-      socketRef.current.on('disconnect', () => {
+      socketRef.current.on('disconnect', (reason) => {
+        console.log('🔌 [WEBSOCKET] Desconectado del servidor');
+        console.log('📋 [WEBSOCKET] Razón de desconexión:', reason);
         setSocketStatus("desconectado");
         addSystemMessage("WebSocket desconectado");
       });
       
       socketRef.current.on('error', (error) => {
-        console.error('Error de socket:', error);
+        console.error('❌ [WEBSOCKET] Error de socket:', error);
+        console.error('📍 [WEBSOCKET] Tipo de error:', typeof error);
+        console.error('📄 [WEBSOCKET] Detalles del error:', error);
         setSocketStatus(`error: ${error}`);
         addSystemMessage(`Error de WebSocket: ${error}`);
       });
       
       socketRef.current.on('connect_error', (error) => {
-        console.error('Error de conexión:', error);
-        console.log('Mensaje completo:', error.message);
+        console.error('💥 [WEBSOCKET] Error de conexión:', error);
+        console.error('📄 [WEBSOCKET] Mensaje completo:', error.message);
+        console.error('📍 [WEBSOCKET] Tipo de error:', error.name);
+        console.error('📋 [WEBSOCKET] Stack trace:', error.stack);
         setSocketStatus(`error de conexión: ${error.message}`);
         addSystemMessage(`Error de conexión WebSocket: ${error.message}`);
       });
