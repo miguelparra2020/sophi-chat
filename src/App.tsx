@@ -117,7 +117,7 @@ export default function ChatInterface() {
 
       try {
         console.log(`📡 [SESSION] Consultando sesiones existentes para el usuario ${user.id}...`);
-        const response = await fetch(`${WSS_API_URL}/sessions/${user.id}`, {
+        const response = await fetch(`${WSS_API_URL}/chat/sessions/${user.id}`, {
           headers: {
             'Authorization': `Bearer ${storedToken}`
           }
@@ -148,7 +148,7 @@ export default function ChatInterface() {
           console.log('📡 [SESSION] Enviando petición para crear nueva sesión...');
           console.log('📦 [SESSION] Payload:', newSessionPayload);
 
-          const createResponse = await fetch(`${WSS_API_URL}/sessions`, {
+          const createResponse = await fetch(`${WSS_API_URL}/chat/sessions`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
