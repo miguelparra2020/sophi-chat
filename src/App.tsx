@@ -22,6 +22,7 @@ interface Message {
 
 export default function ChatInterface() {
   const WSS_API_URL = 'https://sophi-wss.sistemaoperaciones.com/api';
+  const WSS_URL = 'wss://sophi-wss.sistemaoperaciones.com';
   // Estado para mensajes vacío inicialmente
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
@@ -177,6 +178,8 @@ export default function ChatInterface() {
       handleSessionManagement(userInfo);
     }
   }, [userInfo]);
+
+
   const [loginError, setLoginError] = useState<string | null>(null)
   const [socketStatus, setSocketStatus] = useState<string>("desconectado")
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -361,12 +364,15 @@ export default function ChatInterface() {
       });
       
       
-      socketRef.current = io('wss://sophi-wss.sistemaoperaciones.com', {
+      socketRef.current = io(WSS_URL, {
 
         path: '/sophi-wss',
         transports: ['websocket'],
-        auth: { token: token },
-        extraHeaders: sessionId ? { 'chat_session_id': sessionId.toString() } : {},
+        auth: { 
+          token: token
+        },
+        extraHeaders: sessionId ? { 'chat_session_id': sessionId } : {},
+        query:sessionId ? { 'chat_session_id': sessionId } : {},
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
