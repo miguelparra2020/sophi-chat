@@ -968,7 +968,7 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
             },
             sessionId: activeSession.sessionId
           };
-          
+          console.log('Enviando mensaje de audio:', message);
           socketRef.current.emit('message', JSON.stringify(message));
           console.log('Audio enviado por WebSocket');
         } else {
