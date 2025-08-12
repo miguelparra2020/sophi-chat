@@ -9,8 +9,6 @@ import { Card } from "./components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "./components/ui/avatar"
 import { Badge } from "./components/ui/badge"
 import { Separator } from "./components/ui/separator"
-import sophi_logo from './assets/react.svg'; // Logo de marcador de posición temporal
-
 interface Message {
   id: string
   content: string
