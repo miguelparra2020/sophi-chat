@@ -21,7 +21,7 @@ interface Message {
 }
 
 export default function ChatInterface() {
-  const WSS_API_URL = 'http://localhost:3000/api';
+  const WSS_API_URL = 'https://sophi-wss.sistemaoperaciones.com/api';
   // Estado para mensajes vacío inicialmente
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
