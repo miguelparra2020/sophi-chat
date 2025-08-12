@@ -38,7 +38,13 @@ export default function ChatInterface() {
   const [authToken, setAuthToken] = useState<string | null>(null)
   const [userInfo, setUserInfo] = useState<any | null>(null)
   const [activeSession, setActiveSession] = useState<any | null>(null);
-
+  const [loginError, setLoginError] = useState<string | null>(null)
+  const [socketStatus, setSocketStatus] = useState<string>("desconectado")
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const socketRef = useRef<Socket | null>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
   console.log("userInfo:", userInfo)
 
   // Función para obtener el historial de chat
@@ -178,15 +184,9 @@ export default function ChatInterface() {
       handleSessionManagement(userInfo);
     }
   }, [userInfo]);
+  console.log("miguel userInfo", userInfo)
 
-
-  const [loginError, setLoginError] = useState<string | null>(null)
-  const [socketStatus, setSocketStatus] = useState<string>("desconectado")
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
-  const socketRef = useRef<Socket | null>(null)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
-  const audioChunksRef = useRef<Blob[]>([])
+  
   console.log("socketStatus", socketStatus)
   // Función para mostrar el modal de login
   const openLoginModal = () => {
@@ -360,7 +360,13 @@ export default function ChatInterface() {
         reconnectionDelay: 1000,
         forceNew: true,
         timeout: 10000,
-        sessionId: sessionId
+        sessionId: sessionId,
+        path: '/sophi-wss',
+        auth: { 
+          token: token
+        },
+        extraHeaders: sessionId ? { 'chat_session_id': sessionId } : {},
+        query:sessionId ? { 'chat_session_id': sessionId } : {},
       });
       
       
@@ -854,7 +860,7 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
         }
 
         socketRef.current.emit('message', {
-          sessionId: activeSession.sessionId,
+          chat_session_id: activeSession.sessionId,
           message: inputMessage,
           timestamp: new Date().toISOString()
         });
@@ -994,7 +1000,7 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
               mimeType: audioBlob.type,
               size: audioBlob.size
             },
-            sessionId: activeSession.sessionId
+            chat_session_id: activeSession.sessionId
           };
           console.log('Enviando mensaje de audio:', message);
           socketRef.current.emit('message', JSON.stringify(message));
