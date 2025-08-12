@@ -21,7 +21,7 @@ interface Message {
 }
 
 export default function ChatInterface() {
-  const WSS_API_URL = 'https://sophi-wss.sistemaoperaciones.com/api';
+  const WSS_API_URL = 'http://localhost:3000/api';
   // Estado para mensajes vacío inicialmente
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
@@ -338,6 +338,12 @@ export default function ChatInterface() {
       }
       
       console.log('🎟️ [WEBSOCKET] Token para autenticación (primeros 20 chars):', token.substring(0, 20) + '...');
+      
+      // Obtener sessionId de la sesión activa
+      const sessionId = activeSession?.sessionId || localStorage.getItem('activeSession') ? 
+        JSON.parse(localStorage.getItem('activeSession') || '{}').sessionId : null;
+      
+      console.log('🆔 [WEBSOCKET] Session ID para continuidad:', sessionId || 'No disponible');
       setSocketStatus("conectando");
       
       // Crear conexión Socket.IO con token de autenticación
@@ -350,7 +356,8 @@ export default function ChatInterface() {
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
         forceNew: true,
-        timeout: 10000
+        timeout: 10000,
+        sessionId: sessionId
       });
       
       
@@ -359,6 +366,7 @@ export default function ChatInterface() {
         path: '/sophi-wss',
         transports: ['websocket'],
         auth: { token: token },
+        extraHeaders: sessionId ? { 'chat_session_id': sessionId.toString() } : {},
         reconnection: true,
         reconnectionAttempts: 5,
         reconnectionDelay: 1000,
