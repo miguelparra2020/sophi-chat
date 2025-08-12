@@ -9,6 +9,7 @@ import { Card } from "./components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "./components/ui/avatar"
 import { Badge } from "./components/ui/badge"
 import { Separator } from "./components/ui/separator"
+import sophi_logo from './assets/react.svg'; // Logo de marcador de posición temporal
 
 interface Message {
   id: string
@@ -21,6 +22,7 @@ interface Message {
 }
 
 export default function ChatInterface() {
+  const WSS_API_URL = 'https://sophi-wss.sistemaoperaciones.com/api';
   // Estado para mensajes vacío inicialmente
   const [messages, setMessages] = useState<Message[]>([])
   const [inputMessage, setInputMessage] = useState("")
@@ -28,7 +30,9 @@ export default function ChatInterface() {
   const [isConnected, setIsConnected] = useState(false)
   const [isWaitingResponse, setIsWaitingResponse] = useState(false)
   const [showSettingsModal, setShowSettingsModal] = useState(false)
-  const [showLoginModal, setShowLoginModal] = useState(false)
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [historyMessages, setHistoryMessages] = useState<any[]>([]);
+  const [historyPagination, setHistoryPagination] = useState<any>(null);
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [authToken, setAuthToken] = useState<string | null>(null)
@@ -37,7 +41,44 @@ export default function ChatInterface() {
 
   console.log("userInfo:", userInfo)
 
-  // Efecto para cargar el token desde localStorage al iniciar
+  // Función para obtener el historial de chat
+  const fetchHistory = async (sessionId: string, page = 1) => {
+    console.log(`[HISTORY] Fetching history for session ${sessionId}, page ${page}...`);
+    try {
+      const response = await fetch(`${WSS_API_URL}/chat/history/${sessionId}?page=${page}&limit=10`, {
+        headers: {
+          'Authorization': `Bearer ${authToken}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log('[HISTORY] History data received:', data);
+
+      if (data.success && data.messages) {
+        // Los mensajes del historial se deben añadir al principio
+        setHistoryMessages(prev => [...data.messages.reverse(), ...prev]);
+        setHistoryPagination(data.pagination);
+      }
+    } catch (error) {
+      console.error('[HISTORY] Error fetching chat history:', error);
+    }
+  };
+
+  // Efecto para cargar el historial cuando la sesión activa cambia
+  useEffect(() => {
+    if (activeSession && activeSession.sessionId) {
+      // Limpiar historial anterior antes de cargar el nuevo
+      setHistoryMessages([]);
+      setHistoryPagination(null);
+      fetchHistory(activeSession.sessionId);
+    }
+  }, [activeSession]);
+
+  // Efecto para inicializar la aplicación y cargar datos desde localStorage al iniciar
   useEffect(() => {
     console.log('🔄 [INIT] Iniciando aplicación...');
     const storedToken = localStorage.getItem('authToken');
@@ -74,7 +115,7 @@ export default function ChatInterface() {
       }
 
       console.log('🔄 [SESSION] Iniciando gestión de sesión para el usuario:', user.id);
-      const WSS_API_URL = 'https://sophi-wss.sistemaoperaciones.com/api/chat';
+  
 
       try {
         console.log(`📡 [SESSION] Consultando sesiones existentes para el usuario ${user.id}...`);
@@ -1122,7 +1163,40 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
           {/* Eliminamos el indicador de espera flotante ya que ahora está en la barra de navegación */}
           <div className="flex-1 overflow-y-auto px-4 py-6 space-y-4 w-full">
             
-            {messages.map((message) => (
+                          {historyPagination && historyPagination.hasNextPage && (
+                <div className="text-center my-4">
+                  <Button onClick={() => fetchHistory(activeSession.sessionId, historyPagination.page + 1)} variant="outline">
+                    Cargar más antiguos
+                  </Button>
+                </div>
+              )}
+
+              {historyMessages.map((message) => (
+                <div
+                  key={message.id}
+                  className={`flex items-end gap-2 my-2 ${message.messageType === 'human' ? 'justify-end' : 'justify-start'}`}>
+                  {message.messageType === 'ai' && (
+                    <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                        <Bot className="h-4 w-4" />
+                      </AvatarFallback>
+                  )}
+                  <div
+                    className={`rounded-lg px-4 py-2 max-w-lg ${message.messageType === 'human'
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-gray-200 text-gray-900'}`}>
+                    <p className="text-sm">{message.content.response}</p>
+                  </div>
+                  {message.messageType === 'human' && userInfo && (
+                    <AvatarFallback className="bg-blue-500 text-white">
+                        <User className="h-4 w-4" />
+                      </AvatarFallback>
+                  )}
+                </div>
+              ))}
+
+              {historyMessages.length > 0 && <Separator className="my-4" />}
+
+              {messages.map((message) => (
               <div key={message.id} className={`flex ${message.sender === "user" ? "justify-end" : "justify-start"}`}>
                 <div
                   className={`flex items-start space-x-3 max-w-[80%] ${message.sender === "user" ? "flex-row-reverse space-x-reverse" : ""}`}
