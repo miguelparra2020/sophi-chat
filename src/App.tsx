@@ -1174,9 +1174,11 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                   key={message.id}
                   className={`flex items-end gap-2 my-2 ${message.messageType === 'human' ? 'justify-end' : 'justify-start'}`}>
                   {message.messageType === 'ai' && (
-                    <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
+                    <Avatar className="w-8 h-8">
+                      <AvatarFallback className="bg-gradient-to-r from-purple-500 to-pink-500 text-white">
                         <Bot className="h-4 w-4" />
                       </AvatarFallback>
+                    </Avatar>
                   )}
                   <div
                     className={`rounded-lg px-4 py-2 max-w-lg ${message.messageType === 'human'
@@ -1185,9 +1187,12 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                     <p className="text-sm">{message.content.response}</p>
                   </div>
                   {message.messageType === 'human' && userInfo && (
-                    <AvatarFallback className="bg-blue-500 text-white">
+                    <Avatar className="w-8 h-8">
+                      <AvatarImage src={userInfo.picture} alt="User's Avatar" />
+                      <AvatarFallback className="bg-blue-500 text-white">
                         <User className="h-4 w-4" />
                       </AvatarFallback>
+                    </Avatar>
                   )}
                 </div>
               ))}
