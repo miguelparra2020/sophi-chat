@@ -861,7 +861,7 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
 
         socketRef.current.emit('message', {
           chat_session_id: activeSession.sessionId,
-          message: inputMessage,
+          content: inputMessage,
           timestamp: new Date().toISOString()
         });
       } else {
