@@ -9,6 +9,7 @@ import { Card } from "./components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "./components/ui/avatar"
 import { Badge } from "./components/ui/badge"
 import { Separator } from "./components/ui/separator"
+
 interface Message {
   id: string
   content: string
@@ -605,6 +606,12 @@ export default function ChatInterface() {
                   const cleanJson = jsonStr.replace(/\\\"([^\\\"]*)\\\"/g, '"$1"');
                   const messageObj = JSON.parse(cleanJson);
                   
+                  // Filtrar mensajes de tipo system
+                  if (messageObj.messageType === 'system') {
+                    console.log('Mensaje de sistema filtrado:', messageObj);
+                    return;
+                  }
+                  
                   // Extraer contenido y gráficos si existen
                   if (messageObj.message && messageObj.message.content) {
                     messageContent = messageObj.message.content;
@@ -626,6 +633,11 @@ export default function ChatInterface() {
               messageContent = parsedData;
             }
           } else if (parsedData && typeof parsedData === 'object') {
+            // Filtrar mensajes de tipo system que llegan como objetos
+            if (parsedData.messageType === 'system') {
+              console.log('Mensaje de sistema (objeto) filtrado:', parsedData);
+              return;
+            }
             // Es un objeto, extraer el contenido según su estructura
             if (parsedData.message) {
               // Verificar si es un objeto con estructura compleja que incluye quoteData
@@ -641,6 +653,8 @@ export default function ChatInterface() {
                   `https://sophi-agent.sistemaoperaciones.com${graph}`
                 );
               }
+            } else if (parsedData.response) {
+              messageContent = typeof parsedData.response === 'string' ? parsedData.response : JSON.stringify(parsedData.response);
             } else if (parsedData.content) {
               messageContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
             } else if (parsedData.userMessage) {
