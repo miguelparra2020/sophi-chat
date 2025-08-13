@@ -32,7 +32,7 @@ socketRef.current = io(WSS_URL, {
 
 ## Estructura de Mensajes
 
-### Interfaz Message
+### Interfaz Message (UI)
 ```typescript
 interface Message {
   id: string
@@ -45,23 +45,45 @@ interface Message {
 }
 ```
 
+### Interfaces para Mensajes Enviados por WebSocket
+
+#### Mensaje de Texto
+```typescript
+interface TextMessagePayload {
+  chat_session_id: string
+  content: string
+  timestamp: string // ISO string
+}
+```
+
+#### Mensaje de Audio
+```typescript
+interface AudioMessagePayload {
+  type: 'audio'
+  content: string // Base64 encoded audio data
+  metadata: {
+    mimeType: string
+    size: number
+  }
+  chat_session_id: string
+}
+```
+
 ## Envío de Mensajes
 
 ### 1. Mensajes de Texto
 ```typescript
 const sendMessage = () => {
-  if (inputMessage.trim() && socketRef.current && isConnected) {
-    const messageData = {
-      message: inputMessage,
-      sessionId: activeSession?.sessionId,
-      userId: userInfo?.id,
-      username: userInfo?.username,
-      timestamp: new Date().toISOString(),
-      messageType: 'text'
+  if (inputMessage.trim() && socketRef.current?.connected && activeSession) {
+    // Estructura del mensaje de texto
+    const messageData: TextMessagePayload = {
+      chat_session_id: activeSession.sessionId,
+      content: inputMessage,
+      timestamp: new Date().toISOString()
     };
 
     console.log('[SEND] Enviando mensaje:', messageData);
-    socketRef.current.emit('chat_message', messageData);
+    socketRef.current.emit('message', messageData);
     
     // Agregar mensaje del usuario a la UI
     const userMessage: Message = {
@@ -82,18 +104,32 @@ const sendMessage = () => {
 ### 2. Mensajes de Audio
 ```typescript
 const sendAudioMessage = async (audioBlob: Blob) => {
-  if (socketRef.current && isConnected && activeSession) {
-    const formData = new FormData();
-    formData.append('audio', audioBlob, 'audio.wav');
-    formData.append('sessionId', activeSession.sessionId);
-    formData.append('userId', userInfo?.id.toString() || '');
-    formData.append('username', userInfo?.username || '');
-    formData.append('timestamp', new Date().toISOString());
-    formData.append('messageType', 'audio');
-
-    console.log('[AUDIO] Enviando mensaje de audio...');
-    socketRef.current.emit('audio_message', formData);
-    setIsWaitingResponse(true);
+  if (socketRef.current?.connected && activeSession) {
+    try {
+      // Convertir audio a base64
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Data = (reader.result as string).split(',')[1];
+        
+        // Estructura del mensaje de audio
+        const audioMessage: AudioMessagePayload = {
+          type: 'audio',
+          content: base64Data,
+          metadata: {
+            mimeType: audioBlob.type,
+            size: audioBlob.size
+          },
+          chat_session_id: activeSession.sessionId
+        };
+        
+        console.log('[AUDIO] Enviando mensaje de audio:', audioMessage);
+        socketRef.current.emit('message', JSON.stringify(audioMessage));
+        setIsWaitingResponse(true);
+      };
+      reader.readAsDataURL(audioBlob);
+    } catch (error) {
+      console.error('Error al enviar audio:', error);
+    }
   }
 };
 ```
@@ -111,55 +147,62 @@ socketRef.current.on('connect', () => {
 });
 ```
 
-#### 2. Respuesta de Chat
+#### 2. Respuesta del Bot (Evento Unificado)
 ```typescript
-socketRef.current.on('chat_response', (data) => {
-  console.log('[RECEIVE] Respuesta de chat recibida:', data);
+socketRef.current.on('message', (data) => {
+  console.log('[RECEIVE] Mensaje recibido:', data);
   setIsWaitingResponse(false);
   
-  const botMessage: Message = {
-    id: (Date.now() + Math.random()).toString(),
-    content: data.message || data.response || 'Respuesta vacía',
-    sender: "bot",
-    timestamp: new Date(),
-    type: "text",
-    graphs: data.graphs || []
-  };
-  
-  setMessages(prev => [...prev, botMessage]);
-});
-```
-
-#### 3. Respuesta de Audio
-```typescript
-socketRef.current.on('audio_response', (data) => {
-  console.log('[RECEIVE] Respuesta de audio recibida:', data);
-  setIsWaitingResponse(false);
-  
-  if (data.transcription) {
-    // Mensaje con transcripción
-    const transcriptionMessage: Message = {
-      id: (Date.now() + Math.random()).toString(),
-      content: data.transcription,
-      sender: "user",
-      timestamp: new Date(),
-      type: "transcription"
-    };
-    setMessages(prev => [...prev, transcriptionMessage]);
+  // Parsear datos si vienen como string JSON
+  let parsedData;
+  try {
+    parsedData = typeof data === 'string' ? JSON.parse(data) : data;
+  } catch {
+    parsedData = data;
   }
   
-  if (data.audioUrl) {
-    // Mensaje con audio del bot
+  // Manejar mensaje de audio
+  if (parsedData?.audioData) {
+    // Convertir base64 a Blob para reproducción
+    const byteCharacters = atob(parsedData.audioData);
+    const byteNumbers = new Array(byteCharacters.length);
+    for (let i = 0; i < byteCharacters.length; i++) {
+      byteNumbers[i] = byteCharacters.charCodeAt(i);
+    }
+    const byteArray = new Uint8Array(byteNumbers);
+    const audioBlob = new Blob([byteArray], { 
+      type: parsedData.metadata?.mimeType || 'audio/webm' 
+    });
+    const audioURL = URL.createObjectURL(audioBlob);
+    
     const audioMessage: Message = {
-      id: (Date.now() + Math.random() + 1).toString(),
-      content: data.message || "Respuesta de audio",
+      id: (Date.now() + Math.random()).toString(),
+      content: parsedData.content || "Audio",
       sender: "bot",
       timestamp: new Date(),
       type: "audio",
-      audioUrl: data.audioUrl
+      audioUrl: audioURL
     };
     setMessages(prev => [...prev, audioMessage]);
+    return;
   }
+  
+  // Manejar mensaje de texto
+  const textContent = parsedData?.content || parsedData?.message || 'Respuesta vacía';
+  const graphs = parsedData?.quoteData?.graphs?.map((graph: string) => 
+    `https://sophi-agent.sistemaoperaciones.com${graph}`
+  ) || [];
+  
+  const botMessage: Message = {
+    id: (Date.now() + Math.random()).toString(),
+    content: textContent,
+    sender: "bot",
+    timestamp: new Date(),
+    type: "text",
+    graphs: graphs
+  };
+  
+  setMessages(prev => [...prev, botMessage]);
 });
 ```
 
@@ -187,16 +230,17 @@ socketRef.current.on('connect_error', (error) => {
 ## Eventos WebSocket Disponibles
 
 ### Eventos que se Envían (emit)
-- `chat_message`: Enviar mensaje de texto
-- `audio_message`: Enviar mensaje de audio
+- `message`: Enviar mensaje de texto o audio (evento unificado)
+  - Para texto: objeto `TextMessagePayload`
+  - Para audio: string JSON de `AudioMessagePayload`
 
 ### Eventos que se Reciben (on)
 - `connect`: Conexión establecida
 - `disconnect`: Conexión perdida
 - `connect_error`: Error de conexión
 - `error`: Error general
-- `chat_response`: Respuesta de texto del bot
-- `audio_response`: Respuesta de audio del bot
+- `message`: Respuesta del bot (texto, audio, o datos estructurados)
+  - Puede contener: `content`, `audioData`, `graphs`, etc.
 
 ## Estados de Conexión
 
