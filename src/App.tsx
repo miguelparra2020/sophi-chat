@@ -15,7 +15,7 @@ interface Message {
   content: string
   sender: "user" | "bot"
   timestamp: Date
-  type?: "text" | "system" | "audio" | "image" | "transcription"
+  type?: "text" | "system" | "audio" | "image" | "transcription" | "thought" | "completed" | "error"
   audioUrl?: string // URL para reproducir el audio
   graphs?: string[] // URLs de imágenes/gráficos a mostrar
 }
@@ -466,6 +466,48 @@ export default function ChatInterface() {
                 // Estos son mensajes técnicos de procesamiento
                 console.log('Mensaje de procesamiento filtrado:', data);
                 return; // No procesar este mensaje
+              }
+              
+              // Caso 3: Mostrar mensajes con status "thought", "completed" y "error"
+              if (testObj.status === 'thought' || testObj.status === 'completed' || testObj.status === 'error') {
+                console.log('Mensaje con status especial detectado:', testObj.status, testObj);
+                
+                // Extraer el contenido del mensaje
+                let messageContent = '';
+                if (testObj.message && testObj.message.content) {
+                  messageContent = testObj.message.content;
+                } else if (testObj.content) {
+                  messageContent = testObj.content;
+                } else if (testObj.text) {
+                  messageContent = testObj.text;
+                } else {
+                  messageContent = JSON.stringify(testObj);
+                }
+                
+                // Determinar el tipo de mensaje
+                let messageType: string;
+                if (testObj.status === 'thought') {
+                  messageType = 'thought';
+                } else if (testObj.status === 'completed') {
+                  messageType = 'completed';
+                  // Desactivar indicador de espera cuando se completa
+                  setIsWaitingResponse(false);
+                } else {
+                  messageType = 'error';
+                  // Desactivar indicador de espera cuando hay error
+                  setIsWaitingResponse(false);
+                }
+                
+                // Añadir el mensaje al chat con un badge indicando el status
+                setMessages(prevMessages => [...prevMessages, {
+                  id: Date.now().toString(),
+                  content: messageContent,
+                  sender: "bot",
+                  timestamp: new Date(),
+                  type: messageType as "thought" | "completed" | "error"
+                }]);
+                
+                return; // Ya procesamos este mensaje
               }
               // Caso 3: Filtrar mensajes de procesamiento de audio
               if (testObj.status === 'processing_audio' && testObj.messageType) {
@@ -1274,6 +1316,30 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                           className="mb-2 bg-blue-100 text-blue-800 dark:bg-blue-800 dark:text-blue-100"
                         >
                           Transcripción
+                        </Badge>
+                      )}
+                      {message.type === "thought" && (
+                        <Badge
+                          variant="secondary"
+                          className="mb-2 bg-yellow-100 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-100"
+                        >
+                          Pensando
+                        </Badge>
+                      )}
+                      {message.type === "completed" && (
+                        <Badge
+                          variant="secondary"
+                          className="mb-2 bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-100"
+                        >
+                          Completado
+                        </Badge>
+                      )}
+                      {message.type === "error" && (
+                        <Badge
+                          variant="secondary"
+                          className="mb-2 bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100"
+                        >
+                          Error
                         </Badge>
                       )}
                       {message.type === "audio" ? (
