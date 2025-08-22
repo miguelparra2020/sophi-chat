@@ -411,13 +411,13 @@ export default function ChatInterface() {
         addSystemMessage("WebSocket desconectado");
       });
       
-      socketRef.current.on('error', (error) => {
-        console.error('❌ [WEBSOCKET] Error de socket:', error);
-        console.error('📍 [WEBSOCKET] Tipo de error:', typeof error);
-        console.error('📄 [WEBSOCKET] Detalles del error:', error);
-        setSocketStatus(`error: ${error}`);
-        addSystemMessage(`Error de WebSocket: ${error}`);
-      });
+      // socketRef.current.on('error', (error) => {
+      //   console.error('❌ [WEBSOCKET] Error de socket:', error);
+      //   console.error('📍 [WEBSOCKET] Tipo de error:', typeof error);
+      //   console.error('📄 [WEBSOCKET] Detalles del error:', error);
+      //   setSocketStatus(`error: ${error}`);
+      //   addSystemMessage(`Error de WebSocket: ${error}`);
+      // });
       
       socketRef.current.on('connect_error', (error) => {
         console.error('💥 [WEBSOCKET] Error de conexión:', error);
@@ -1334,14 +1334,7 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                           Completado
                         </Badge>
                       )}
-                      {message.type === "error" && (
-                        <Badge
-                          variant="secondary"
-                          className="mb-2 bg-red-100 text-red-800 dark:bg-red-800 dark:text-red-100"
-                        >
-                          Error
-                        </Badge>
-                      )}
+                      
                       {message.type === "audio" ? (
                         <div className="flex flex-col gap-2">
                           <p
