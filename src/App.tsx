@@ -431,7 +431,7 @@ export default function ChatInterface() {
       // Escuchar mensajes entrantes
       socketRef.current.on('message', (data) => {
         try {
-          console.log('Datos recibidos sin procesar:', data.status);
+          console.log('Datos recibidos sin procesar:', data);
           
           // Filtro para mensajes técnicos de varios formatos
           if (typeof data === 'string') {
@@ -463,51 +463,73 @@ export default function ChatInterface() {
               }
               // Caso 2: Filtrar mensajes con status "processing"
               if (testObj.status === 'processing' && testObj.messageType) {
-                // Estos son mensajes técnicos de procesamiento
                 console.log('Mensaje de procesamiento filtrado:', data);
                 return; // No procesar este mensaje
               }
               
-              // Caso 3: Mostrar mensajes con status "thought", "completed" y "error"
-              if (testObj.status === 'thought' || testObj.status === 'completed' || testObj.status === 'error') {
+              // CASO ESPECIAL: Manejar mensajes con status especiales
+              if (testObj.status === 'completed' || testObj.status === 'thought' || testObj.status === 'error') {
                 console.log('Mensaje con status especial detectado:', testObj.status, testObj);
                 
-                // Extraer el contenido del mensaje
-                let messageContent = '';
-                if (testObj.message && testObj.message.content) {
-                  messageContent = testObj.message.content;
-                } else if (testObj.content) {
-                  messageContent = testObj.content;
-                } else if (testObj.text) {
-                  messageContent = testObj.text;
+                // Solo procesar mensajes completados, no los de pensamiento
+                if (testObj.status === 'completed') {
+                  console.log('🎯 [COMPLETED] Procesando mensaje completado:', testObj);
+                  
+                  // Verificar si tiene gráficos
+                  if (testObj.quoteData && testObj.quoteData.graphs && Array.isArray(testObj.quoteData.graphs)) {
+                    console.log('🖼️ [GRAPHS] Gráficos detectados en mensaje completed:', testObj.quoteData.graphs);
+                    
+                    // Construir URLs de imágenes
+                    const imageUrls = testObj.quoteData.graphs.map((graph: string) => {
+                      const encodedPath = encodeURI(graph);
+                      const fullUrl = `https://sophi-agent.sistemaoperaciones.com${encodedPath}`;
+                      console.log('🔗 [URL] Ruta original:', graph);
+                      console.log('🔗 [URL] Ruta codificada:', encodedPath);
+                      console.log('🔗 [URL] URL completa:', fullUrl);
+                      return fullUrl;
+                    });
+                    
+                    // Extraer contenido del mensaje
+                    let messageContent = '';
+                    if (testObj.message && testObj.message.content) {
+                      messageContent = testObj.message.content;
+                    } else if (testObj.quoteData && testObj.quoteData.response) {
+                      messageContent = testObj.quoteData.response;
+                    }
+                    
+                    console.log('📝 [CONTENT] Contenido del mensaje:', messageContent);
+                    console.log('✅ [FINAL] Llamando a addBotMessageWithGraphs');
+                    
+                    // Crear mensaje con gráficos
+                    addBotMessageWithGraphs(messageContent, imageUrls);
+                    setIsWaitingResponse(false);
+                    return;
+                  }
+                  
+                  // Si no tiene gráficos, continuar con el procesamiento normal
+                  // parsedData = testObj; // Comentado para evitar error de TypeScript
+                } else if (testObj.status === 'thought') {
+                  // Procesar mensajes de pensamiento
+                  let messageContent = '';
+                  if (testObj.message && testObj.message.content) {
+                    messageContent = testObj.message.content;
+                  } else if (testObj.quoteData && testObj.quoteData.response) {
+                    messageContent = testObj.quoteData.response;
+                  }
+                  
+                  // Añadir mensaje thought al chat
+                  setMessages(prevMessages => [...prevMessages, {
+                    id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                    content: messageContent,
+                    sender: "bot",
+                    timestamp: new Date(),
+                    type: "thought"
+                  }]);
+                  return;
                 } else {
-                  messageContent = JSON.stringify(testObj);
+                  // Para mensajes de error, no hacer nada más
+                  return;
                 }
-                
-                // Determinar el tipo de mensaje
-                let messageType: string;
-                if (testObj.status === 'thought') {
-                  messageType = 'thought';
-                } else if (testObj.status === 'completed') {
-                  messageType = 'completed';
-                  // Desactivar indicador de espera cuando se completa
-                  setIsWaitingResponse(false);
-                } else {
-                  messageType = 'error';
-                  // Desactivar indicador de espera cuando hay error
-                  setIsWaitingResponse(false);
-                }
-                
-                // Añadir el mensaje al chat con un badge indicando el status
-                setMessages(prevMessages => [...prevMessages, {
-                  id: Date.now().toString(),
-                  content: messageContent,
-                  sender: "bot",
-                  timestamp: new Date(),
-                  type: messageType as "thought" | "completed" | "error"
-                }]);
-                
-                return; // Ya procesamos este mensaje
               }
               // Caso 3: Filtrar mensajes de procesamiento de audio
               if (testObj.status === 'processing_audio' && testObj.messageType) {
@@ -581,63 +603,37 @@ export default function ChatInterface() {
               // Crear URL para reproducir el audio
               const audioURL = URL.createObjectURL(audioBlob);
               
-              // Extraer el texto del mensaje si existe
-              let textContent = "Audio";
+              // Extraer el texto del mensaje
+              let textContent = "Mensaje de audio";
               
-              // Intentar extraer el contenido de estructuras JSON anidadas
-              const tryParseJsonContent = (data: any) => {
-                if (!data) return null;
-                
-                // Si es un string que parece JSON, intentar parsearlo
-                if (typeof data === 'string' && (data.startsWith('{') || data.startsWith('['))) {
-                  try {
-                    const parsed = JSON.parse(data);
-                    if (parsed.content) return parsed.content;
-                    return null;
-                  } catch {
-                    return null;
-                  }
-                }
-                
-                // Si ya es un objeto, buscar el campo content
-                if (typeof data === 'object' && data !== null && data.content) {
-                  return data.content;
-                }
-                
-                return null;
-              };
-              
-              // Primero, buscar en el campo content directamente
-              if (parsedData.content) {
-                const extractedContent = tryParseJsonContent(parsedData.content);
-                if (extractedContent) {
-                  textContent = extractedContent;
-                } else {
-                  textContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
-                }
-              } 
-              // Luego en message
-              else if (parsedData.message) {
-                const extractedContent = tryParseJsonContent(parsedData.message);
-                if (extractedContent) {
-                  textContent = extractedContent;
-                } else {
-                  textContent = typeof parsedData.message === 'string' ? parsedData.message : JSON.stringify(parsedData.message);
-                }
-              } 
-              // Finalmente en text
-              else if (parsedData.text) {
+              // Buscar el contenido del texto en la estructura del mensaje
+              if (parsedData.message && parsedData.message.content) {
+                textContent = parsedData.message.content;
+              } else if (parsedData.quoteData && parsedData.quoteData.response) {
+                textContent = parsedData.quoteData.response;
+              } else if (parsedData.content) {
+                textContent = typeof parsedData.content === 'string' ? parsedData.content : JSON.stringify(parsedData.content);
+              } else if (parsedData.text) {
                 textContent = parsedData.text;
               }
               
-              // Añadir mensaje de audio del bot con texto
+              // Verificar si también hay gráficos en el mensaje de audio
+              let graphUrls: string[] = [];
+              if (parsedData.quoteData && parsedData.quoteData.graphs && Array.isArray(parsedData.quoteData.graphs)) {
+                graphUrls = parsedData.quoteData.graphs.map((graph: string) => 
+                  `https://sophi-agent.sistemaoperaciones.com${graph}`
+                );
+              }
+              
+              // Añadir mensaje de audio del bot con texto y posibles gráficos
               setMessages(prevMessages => [...prevMessages, {
                 id: Date.now().toString(),
                 content: textContent, // Contenido de texto del mensaje
                 sender: "bot",
                 timestamp: new Date(),
                 type: "audio",
-                audioUrl: audioURL
+                audioUrl: audioURL,
+                graphs: graphUrls.length > 0 ? graphUrls : undefined
               }]);
               
               // Desactivar indicador de espera cuando se recibe una respuesta
@@ -695,11 +691,6 @@ export default function ChatInterface() {
               messageContent = parsedData;
             }
           } else if (parsedData && typeof parsedData === 'object') {
-            // Filtrar mensajes de tipo system que llegan como objetos
-            if (parsedData.messageType === 'system') {
-              console.log('Mensaje de sistema (objeto) filtrado:', parsedData);
-              return;
-            }
             // Es un objeto, extraer el contenido según su estructura
             if (parsedData.message) {
               // Verificar si es un objeto con estructura compleja que incluye quoteData
@@ -711,9 +702,25 @@ export default function ChatInterface() {
               
               // Extraer gráficos si existen en quoteData
               if (parsedData.quoteData && parsedData.quoteData.graphs && Array.isArray(parsedData.quoteData.graphs)) {
-                graphUrls = parsedData.quoteData.graphs.map((graph: string) => 
-                  `https://sophi-agent.sistemaoperaciones.com${graph}`
-                );
+                graphUrls = parsedData.quoteData.graphs.map((graph: string) => {
+                  // Codificar correctamente la URL para manejar espacios y caracteres especiales
+                  const encodedPath = encodeURI(graph);
+                  return `https://sophi-agent.sistemaoperaciones.com${encodedPath}`;
+                });
+                console.log('🔗 [DEBUG] URLs de gráficos generadas:', graphUrls);
+              }
+            } else if (parsedData.quoteData && parsedData.quoteData.response) {
+              // Si no hay message pero sí quoteData con response, usar ese contenido
+              messageContent = parsedData.quoteData.response;
+              
+              // También extraer gráficos de quoteData
+              if (parsedData.quoteData.graphs && Array.isArray(parsedData.quoteData.graphs)) {
+                graphUrls = parsedData.quoteData.graphs.map((graph: string) => {
+                  // Codificar correctamente la URL para manejar espacios y caracteres especiales
+                  const encodedPath = encodeURI(graph);
+                  return `https://sophi-agent.sistemaoperaciones.com${encodedPath}`;
+                });
+                console.log('🔗 [DEBUG] URLs de gráficos generadas (quoteData):', graphUrls);
               }
             } else if (parsedData.response) {
               messageContent = typeof parsedData.response === 'string' ? parsedData.response : JSON.stringify(parsedData.response);
@@ -741,14 +748,26 @@ export default function ChatInterface() {
             return; // No mostrar el mensaje
           }
           
-          console.log('Contenido extraído del mensaje que se mostrará:', messageContent);
-          console.log('Gráficos encontrados:', graphUrls);
+          console.log('🔍 [DEBUG] Contenido extraído del mensaje que se mostrará:', messageContent);
+          console.log('🖼️ [DEBUG] Gráficos encontrados:', graphUrls);
+          console.log('📊 [DEBUG] Estructura completa del parsedData:', parsedData);
+          
+          // Log específico para quoteData.graphs
+          if (parsedData && parsedData.quoteData) {
+            console.log('📈 [DEBUG] quoteData completo:', parsedData.quoteData);
+            console.log('🎨 [DEBUG] graphs en quoteData:', parsedData.quoteData.graphs);
+            console.log('🔢 [DEBUG] Tipo de graphs:', typeof parsedData.quoteData.graphs);
+            console.log('❓ [DEBUG] Es null?', parsedData.quoteData.graphs === null);
+            console.log('❓ [DEBUG] Es undefined?', parsedData.quoteData.graphs === undefined);
+          }
           
           // Paso 4: Añadir el mensaje procesado al chat si pasó todos los filtros
           if (graphUrls.length > 0) {
+            console.log('✅ [DEBUG] Llamando a addBotMessageWithGraphs con:', { messageContent, graphUrls });
             // Si hay gráficos, usamos la función especial para mensajes con imágenes
             addBotMessageWithGraphs(messageContent, graphUrls);
           } else {
+            console.log('📝 [DEBUG] Llamando a addBotMessage (sin gráficos)');
             addBotMessage(messageContent);
           }
           
@@ -781,7 +800,7 @@ export default function ChatInterface() {
   // Helper para añadir mensajes del sistema
   const addSystemMessage = (content: string) => {
     setMessages(prevMessages => [...prevMessages, {
-      id: Date.now().toString(),
+      id: `bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       content,
       sender: "bot",
       timestamp: new Date(),
@@ -808,7 +827,7 @@ export default function ChatInterface() {
     }
     
     setMessages(prevMessages => [...prevMessages, {
-      id: Date.now().toString(),
+      id: `bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       content: messageContent,
       sender: "bot",
       timestamp: new Date()
@@ -818,6 +837,8 @@ export default function ChatInterface() {
   // Helper para añadir mensajes del bot con gráficos/imágenes
   const addBotMessageWithGraphs = (content: string, graphs: string[]) => {
     let messageContent = content;
+    
+    console.log('🎯 [addBotMessageWithGraphs] Recibido:', { content, graphs });
     
     try {
       // Verifica si el contenido parece ser un JSON string
@@ -831,14 +852,22 @@ export default function ChatInterface() {
       console.log('No es un JSON válido, usando texto original');
     }
     
-    setMessages(prevMessages => [...prevMessages, {
-      id: Date.now().toString(),
+    const newMessage: Message = {
+      id: `bot-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       content: messageContent,
       sender: "bot",
       timestamp: new Date(),
       type: "image",
       graphs: graphs
-    }]);
+    };
+    
+    console.log('📨 [addBotMessageWithGraphs] Creando mensaje:', newMessage);
+    
+    setMessages(prevMessages => {
+      const updatedMessages = [...prevMessages, newMessage];
+      console.log('📋 [addBotMessageWithGraphs] Lista de mensajes actualizada:', updatedMessages);
+      return updatedMessages;
+    });
   };
 
   // Función para cerrar el chat
@@ -1245,9 +1274,9 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                 </div>
               )}
 
-              {historyMessages.map((message) => (
+              {historyMessages.map((message, index) => (
                 <div
-                  key={message.id}
+                  key={`history-${message.id}-${index}`}
                   className={`flex items-end gap-2 my-2 ${message.messageType === 'human' ? 'justify-end' : 'justify-start'}`}>
                   {message.messageType === 'ai' && (
                     <Avatar className="w-8 h-8">
@@ -1365,6 +1394,52 @@ const handleKeyPress = (e: React.KeyboardEvent) => {
                               className="max-w-[200px] h-8"
                             />
                           </div>
+                          {/* Mostrar gráficos si existen en el mensaje de audio */}
+                          {message.graphs && message.graphs.length > 0 && (
+                            <div className="flex flex-col gap-3 mt-2">
+                              {message.graphs.map((graphUrl, index) => (
+                                <div key={index} className="flex flex-col gap-2">
+                                  <div className="relative group">
+                                    <img 
+                                      src={graphUrl} 
+                                      alt={`Gráfico ${index + 1}`} 
+                                      className="max-w-full rounded-md shadow-sm" 
+                                      style={{ maxHeight: '300px' }}
+                                      onError={(e) => {
+                                        console.error('Error al cargar imagen:', graphUrl);
+                                        (e.target as HTMLImageElement).style.display = 'none';
+                                      }}
+                                    />
+                                    <div className="absolute top-2 right-2 flex gap-2 opacity-70 hover:opacity-100">
+                                      <Button 
+                                        size="icon"
+                                        variant="secondary"
+                                        className="h-8 w-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm hover:bg-white dark:hover:bg-gray-800 text-blue-600 dark:text-blue-400"
+                                        title="Abrir en nueva pestaña"
+                                        onClick={() => window.open(graphUrl, '_blank')}
+                                      >
+                                        <ExternalLink className="h-4 w-4" />
+                                      </Button>
+                                      <Button 
+                                        size="icon"
+                                        variant="secondary"
+                                        className="h-8 w-8 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm shadow-sm hover:bg-white dark:hover:bg-gray-800 text-green-600 dark:text-green-400"
+                                        title="Descargar imagen"
+                                        onClick={() => {
+                                          const link = document.createElement('a');
+                                          link.href = graphUrl;
+                                          link.download = `grafico-${index + 1}.png`;
+                                          link.click();
+                                        }}
+                                      >
+                                        <Download className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       ) : message.type === "image" ? (
                         <div className="flex flex-col gap-4">
